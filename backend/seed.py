@@ -22,6 +22,9 @@ from backend.es.client import es_client
 from backend.es.index import create_company_index
 from backend.es.operations import bulk_index_companies
 from backend.db.database import Base, engine
+from backend.llm.attribute_extractor import extract_company_attributes
+from backend.llm.extraction_cache import extraction_cache
+from backend.settings import settings
 
 def seed_database():
     """
@@ -44,15 +47,30 @@ def seed_database():
                 print("Aborted.")
                 return
 
-        # Load seed data for locations, industries, and target markets
+        # Load seed data for industries and target markets
         seed_data_path = Path(__file__).parent / "backend" / "db" / "seed_data.json"
         with open(seed_data_path, 'r') as f:
             seed_data = json.load(f)
 
-        # Seed locations
-        print("\nSeeding locations...")
+        # Extract unique locations from CSV first
+        print("\nExtracting unique locations from CSV...")
+        csv_path = Path(__file__).parent / "backend" / "db" / "B2B_SaaS_2021-2022.csv"
+        unique_cities = set()
+
+        if csv_path.exists():
+            with open(csv_path, 'r', encoding='utf-8') as file:
+                # Skip the first line (title line)
+                next(file)
+                csv_reader = csv.DictReader(file)
+                for row in csv_reader:
+                    city = row.get('City', '').strip()
+                    if city:
+                        unique_cities.add(city)
+
+        # Seed locations from CSV
+        print("Seeding locations from CSV...")
         location_map = {}
-        for city in seed_data['locations']:
+        for city in sorted(unique_cities):
             # Check if location already exists
             existing = db.query(Location).filter(Location.city == city).first()
             if existing:
@@ -63,7 +81,7 @@ def seed_database():
                 db.flush()
                 location_map[city] = location.id
         db.commit()
-        print(f"✓ Seeded {len(location_map)} locations")
+        print(f"✓ Seeded {len(location_map)} locations from CSV")
 
         # Seed industries
         print("Seeding industries...")
@@ -110,9 +128,7 @@ def seed_database():
         db.commit()
         print(f"✓ Seeded {len(funding_stage_map)} funding stages")
 
-        # Load companies from CSV
-        csv_path = Path(__file__).parent / "backend" / "db" / "B2B_SaaS_2021-2022.csv"
-
+        # Load companies from CSV (already opened above for location extraction)
         if csv_path.exists():
             print("\nLoading companies from CSV...")
             with open(csv_path, 'r', encoding='utf-8') as file:
@@ -123,38 +139,63 @@ def seed_database():
                 companies = []
                 stage_names = list(funding_stage_map.keys())
 
-                for row in csv_reader:
-                    # Randomly assign location, industries, and target markets for demo purposes
-                    city = row.get('City', '')
-                    location_id = location_map.get(city) if city in location_map else random.choice(list(location_map.values()))
+                # Funding ranges for random assignment
+                funding_ranges = {
+                    "Stealth": (0, 100000),
+                    "Pre-Seed": (50000, 500000),
+                    "Seed": (500000, 3000000),
+                    "Series A": (3000000, 15000000),
+                    "Series B": (15000000, 50000000),
+                    "Series C": (50000000, 150000000),
+                    "Series D+": (150000000, 500000000),
+                    "Growth": (100000000, 1000000000),
+                    "Public": (500000000, 5000000000)
+                }
 
-                    # Generate random company metrics
+                # Show cache stats if enabled
+                if settings.use_llm_cache:
+                    cache_stats = extraction_cache.stats()
+                    print(f"LLM cache enabled: {cache_stats['cached_entries']} entries cached")
+
+                print("Extracting attributes using LLM...")
+                for idx, row in enumerate(csv_reader, 1):
+                    company_name = row.get('Company Name', '')
+                    description = row.get('Description', '')
+                    website_text = row.get('Website Text', '')
+                    city = row.get('City', '')
+
+                    # Extract location, industries, and target markets using LLM
+                    print(f"  [{idx}] Processing {company_name}...")
+                    extracted = extract_company_attributes(
+                        company_name=company_name,
+                        description=description,
+                        website_text=website_text,
+                        db=db
+                    )
+
+                    # Map extracted location to ID, with fallbacks
+                    location_id = None
+                    if not location_id and city in location_map:
+                        location_id = location_map.get(city)
+                    if not location_id and extracted.get("location"):
+                        location_id = location_map.get(extracted["location"])
+                    if not location_id:
+                        location_id = random.choice(list(location_map.values()))
+
+                    # Generate random company metrics (not extracted by LLM)
                     employee_count = random.choice([5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000])
                     stage_name = random.choice(stage_names)
                     funding_stage_id = funding_stage_map[stage_name]
-
-                    # Generate funding amount based on stage
-                    funding_ranges = {
-                        "Stealth": (0, 100000),
-                        "Pre-Seed": (50000, 500000),
-                        "Seed": (500000, 3000000),
-                        "Series A": (3000000, 15000000),
-                        "Series B": (15000000, 50000000),
-                        "Series C": (50000000, 150000000),
-                        "Series D+": (150000000, 500000000),
-                        "Growth": (100000000, 1000000000),
-                        "Public": (500000000, 5000000000)
-                    }
                     min_funding, max_funding = funding_ranges.get(stage_name, (0, 1000000))
                     funding_amount = random.randint(min_funding, max_funding)
 
                     company = Company(
-                        company_name=row.get('Company Name', ''),
+                        company_name=company_name,
                         company_id=int(row.get('Company ID', 0)) if row.get('Company ID', '').isdigit() else None,
                         city=city,
-                        description=row.get('Description', ''),
+                        description=description,
                         website_url=row.get('Website URL', ''),
-                        website_text=row.get('Website Text', ''),
+                        website_text=website_text,
                         location_id=location_id,
                         funding_stage_id=funding_stage_id,
                         employee_count=employee_count,
@@ -162,29 +203,57 @@ def seed_database():
                     )
                     companies.append(company)
 
+                    # Store extracted attributes for later assignment
+                    company._extracted_industries = extracted.get("industries") or []
+                    company._extracted_markets = extracted.get("target_markets") or []
+
                 db.bulk_save_objects(companies)
                 db.commit()
                 print(f"✓ Loaded {len(companies)} companies from CSV")
 
-            # Assign industries and target markets to companies
-            print("\nAssigning industries and target markets...")
-            db_companies = db.query(Company).all()
-            for company in db_companies:
-                # Randomly assign 1-3 industries
-                num_industries = random.randint(1, 3)
-                selected_industries = random.sample(list(industry_map.values()), num_industries)
-                for industry_id in selected_industries:
-                    industry = db.query(Industry).get(industry_id)
-                    if industry not in company.industries:
-                        company.industries.append(industry)
+            # Assign industries and target markets using LLM-extracted values
+            print("\nAssigning industries and target markets from LLM extraction...")
+            for idx, company in enumerate(companies):
+                # Get the corresponding DB company (they're in the same order)
+                db_company = db.query(Company).filter(Company.company_name == company.company_name).first()
+                if not db_company:
+                    continue
 
-                # Randomly assign 1-2 target markets
-                num_markets = random.randint(1, 2)
-                selected_markets = random.sample(list(target_market_map.values()), num_markets)
-                for market_id in selected_markets:
-                    market = db.query(TargetMarket).get(market_id)
-                    if market not in company.target_markets:
-                        company.target_markets.append(market)
+                # Assign LLM-extracted industries
+                extracted_industries = getattr(company, '_extracted_industries', [])
+                if extracted_industries:
+                    for industry_name in extracted_industries:
+                        industry_id = industry_map.get(industry_name)
+                        if industry_id:
+                            industry = db.query(Industry).get(industry_id)
+                            if industry and industry not in db_company.industries:
+                                db_company.industries.append(industry)
+                else:
+                    # Fallback to random if LLM didn't extract any
+                    num_industries = random.randint(1, 2)
+                    selected_industries = random.sample(list(industry_map.values()), num_industries)
+                    for industry_id in selected_industries:
+                        industry = db.query(Industry).get(industry_id)
+                        if industry not in db_company.industries:
+                            db_company.industries.append(industry)
+
+                # Assign LLM-extracted target markets
+                extracted_markets = getattr(company, '_extracted_markets', [])
+                if extracted_markets:
+                    for market_name in extracted_markets:
+                        market_id = target_market_map.get(market_name)
+                        if market_id:
+                            market = db.query(TargetMarket).get(market_id)
+                            if market and market not in db_company.target_markets:
+                                db_company.target_markets.append(market)
+                else:
+                    # Fallback to random if LLM didn't extract any
+                    num_markets = random.randint(1, 2)
+                    selected_markets = random.sample(list(target_market_map.values()), num_markets)
+                    for market_id in selected_markets:
+                        market = db.query(TargetMarket).get(market_id)
+                        if market not in db_company.target_markets:
+                            db_company.target_markets.append(market)
 
             db.commit()
             print("✓ Completed industry and target market assignments")

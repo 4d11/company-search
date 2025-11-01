@@ -1,16 +1,4 @@
 {
-  "locations": [
-    "San Francisco",
-    "New York",
-    "Mountain View",
-    "Austin",
-    "Seattle",
-    "Boston",
-    "Los Angeles",
-    "Chicago",
-    "Denver",
-    "Portland"
-  ],
   "industries": [
     "Enterprise Software",
     "Financial Services",
