@@ -22,9 +22,30 @@
       "created_at": {
         "type": "date"
       },
+      "location": {
+        "type": "keyword"
+      },
+      "industries": {
+        "type": "keyword"
+      },
+      "target_markets": {
+        "type": "keyword"
+      },
+      "employee_count": {
+        "type": "integer"
+      },
+      "stage": {
+        "type": "keyword"
+      },
+      "stage_order": {
+        "type": "integer"
+      },
+      "funding_amount": {
+        "type": "integer"
+      },
       "description_vector": {
         "type": "dense_vector",
-        "dims": 384,
+        "dims": 1024,
         "index": true,
         "similarity": "cosine"
       }
