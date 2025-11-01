@@ -31,9 +31,33 @@ class CompanyResponse(BaseModel):
     city: Optional[str]
     description: Optional[str]
     website_url: Optional[str]
+    employee_count: Optional[int]
+    stage: Optional[str] = None
+    funding_amount: Optional[int] = None
+    location: Optional[str] = None
+    industries: List[str] = []
+    target_markets: List[str] = []
 
     class Config:
         from_attributes = True
+
+    @staticmethod
+    def from_company(company):
+        """Convert Company model to CompanyResponse."""
+        return CompanyResponse(
+            id=company.id,
+            company_name=company.company_name,
+            company_id=company.company_id,
+            city=company.city,
+            description=company.description,
+            website_url=company.website_url,
+            employee_count=company.employee_count,
+            stage=company.funding_stage.name if company.funding_stage else None,
+            funding_amount=company.funding_amount,
+            location=company.location.city if company.location else None,
+            industries=[ind.name for ind in company.industries],
+            target_markets=[tm.name for tm in company.target_markets]
+        )
 
 
 class QueryResponse(BaseModel):
@@ -82,4 +106,8 @@ async def submit_query(request: QueryRequest, db: Session = Depends(get_db)):
         min_funding=request.min_funding,
         max_funding=request.max_funding
     )
-    return QueryResponse(companies=companies)
+
+    # Convert Company models to CompanyResponse
+    company_responses = [CompanyResponse.from_company(company) for company in companies]
+
+    return QueryResponse(companies=company_responses)
