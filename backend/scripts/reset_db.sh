@@ -1,0 +1,26 @@
+#!/bin/bash
+# Quick script to wipe and re-seed the database
+
+set -e  # Exit on error
+
+echo "=========================================="
+echo "Database Reset Script"
+echo "=========================================="
+
+# Change to backend directory
+cd "$(dirname "$0")/.."
+
+# Run wipe script from backend directory
+echo ""
+echo "Step 1: Wiping databases..."
+python -m scripts.wipe_databases
+
+# Run seed script
+echo ""
+echo "Step 2: Seeding databases..."
+python seed.py
+
+echo ""
+echo "=========================================="
+echo "✓ Database reset complete!"
+echo "=========================================="

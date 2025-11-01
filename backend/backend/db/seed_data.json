@@ -1,0 +1,57 @@
+{
+  "locations": [
+    "San Francisco",
+    "New York",
+    "Mountain View",
+    "Austin",
+    "Seattle",
+    "Boston",
+    "Los Angeles",
+    "Chicago",
+    "Denver",
+    "Portland"
+  ],
+  "industries": [
+    "Enterprise Software",
+    "Financial Services",
+    "Business Intelligence",
+    "AI & Machine Learning",
+    "Cloud Infrastructure",
+    "Cybersecurity",
+    "Data Analytics",
+    "Marketing Technology",
+    "Sales Automation",
+    "HR Technology",
+    "Healthcare IT",
+    "E-commerce",
+    "Supply Chain",
+    "Legal Tech",
+    "Real Estate Tech"
+  ],
+  "target_markets": [
+    "Enterprise",
+    "SMB",
+    "Startups",
+    "Mid-Market",
+    "Government",
+    "Education",
+    "Healthcare",
+    "Financial Services",
+    "Retail",
+    "Manufacturing",
+    "Technology",
+    "Professional Services",
+    "Non-Profit"
+  ],
+  "funding_stages": [
+    {"name": "Stealth", "order_index": 0},
+    {"name": "Pre-Seed", "order_index": 1},
+    {"name": "Seed", "order_index": 2},
+    {"name": "Series A", "order_index": 3},
+    {"name": "Series B", "order_index": 4},
+    {"name": "Series C", "order_index": 5},
+    {"name": "Series D+", "order_index": 6},
+    {"name": "Growth", "order_index": 7},
+    {"name": "Public", "order_index": 8}
+  ]
+}
