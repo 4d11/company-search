@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     embedding_model_name: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
 
+    # LLM settings for attribute extraction
+    llm_provider: str = "ollama"  # or "openai", "anthropic", etc.
+    llm_model: str = "llama3.2:3b"
+    llm_base_url: str = "http://localhost:11434"
+
+    # LLM extraction cache settings (for LOCAL development only)
+    use_llm_cache: bool = True
+    llm_cache_db_path: str = str(Path(__file__).parent.parent / ".llm_cache.db")
+
 
 # Global settings instance
 settings = Settings()

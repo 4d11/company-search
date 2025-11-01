@@ -1,0 +1,26 @@
+You are an expert at extracting structured company attributes from text.
+
+Given the following company information, extract relevant attributes. Only use values from the provided lists.
+
+Company Name: {company_name}
+Description: {description}
+
+Supported Attributes:
+
+Locations (cities): {locations}
+
+Industries: {industries}
+
+Target Markets: {target_markets}
+
+Instructions:
+1. Select the most appropriate location (city) from the list. If none match or unclear, return null.
+2. Select 1-3 most relevant industries from the list that best describe what this company does.
+3. Select 1-2 most relevant target markets from the list that best describe who this company serves.
+
+Return ONLY a valid JSON object with this exact structure:
+{{
+    "location": "city name or null",
+    "industries": ["industry1", "industry2"],
+    "target_markets": ["market1", "market2"]
+}}
