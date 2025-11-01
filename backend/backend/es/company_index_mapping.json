@@ -1,0 +1,33 @@
+{
+  "mappings": {
+    "properties": {
+      "company_id": {
+        "type": "integer"
+      },
+      "company_name": {
+        "type": "text"
+      },
+      "city": {
+        "type": "keyword"
+      },
+      "description": {
+        "type": "text"
+      },
+      "website_url": {
+        "type": "keyword"
+      },
+      "website_text": {
+        "type": "text"
+      },
+      "created_at": {
+        "type": "date"
+      },
+      "description_vector": {
+        "type": "dense_vector",
+        "dims": 384,
+        "index": true,
+        "similarity": "cosine"
+      }
+    }
+  }
+}

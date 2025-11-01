@@ -12,6 +12,9 @@ from starlette.middleware.cors import CORSMiddleware
 
 from backend.db import database
 from backend.routes import query
+from backend.es.client import es_client
+from backend.es.index import create_company_index
+from backend.es.operations import bulk_index_companies
 
 
 @asynccontextmanager
@@ -69,6 +72,16 @@ def seed_database(db: Session):
             db.bulk_save_objects(companies)
             db.commit()
             print(f"Loaded {len(companies)} companies from CSV")
+
+            # Index companies into Elasticsearch
+            print("Creating Elasticsearch index...")
+            create_company_index(es_client)
+
+            # Fetch companies from database to get their IDs
+            db_companies = db.query(database.Company).all()
+            print(f"Indexing {len(db_companies)} companies into Elasticsearch...")
+            bulk_index_companies(es_client, db_companies)
+
     else:
         print(f"CSV file not found at {csv_path}")
 
@@ -85,3 +98,4 @@ app.add_middleware(
 
 # Include routers
 app.include_router(query.router, prefix="/api", tags=["query"])
+
