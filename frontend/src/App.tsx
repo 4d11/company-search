@@ -13,6 +13,10 @@ interface Company {
   employee_count: number | null;
   stage: string | null;
   funding_amount: number | null;
+  location: string | null;
+  industries: string[];
+  target_markets: string[];
+  explanation: string | null;
 }
 
 interface FilterOptions {
@@ -20,6 +24,27 @@ interface FilterOptions {
   industries: string[];
   target_markets: string[];
   stages: string[];
+}
+
+type OperatorType = "EQ" | "NEQ" | "GT" | "GTE" | "LT" | "LTE";
+type FilterType = "text" | "numeric";
+type LogicType = "AND" | "OR";
+
+interface FilterRule {
+  op: OperatorType;
+  value: string | number;
+}
+
+interface SegmentFilter {
+  segment: string;
+  type: FilterType;
+  logic: LogicType;
+  rules: FilterRule[];
+}
+
+interface QueryFilters {
+  logic: LogicType;
+  filters: SegmentFilter[];
 }
 
 const exampleQueries = [
@@ -53,6 +78,10 @@ function App() {
   const [minFunding, setMinFunding] = useState<string>("");
   const [maxFunding, setMaxFunding] = useState<string>("");
 
+  // Applied filters from backend and excluded segments
+  const [appliedFilters, setAppliedFilters] = useState<QueryFilters | null>(null);
+  const [excludedSegments, setExcludedSegments] = useState<string[]>([]);
+
   useEffect(() => {
     // Randomly select a placeholder on component mount
     const randomQuery = exampleQueries[Math.floor(Math.random() * exampleQueries.length)];
@@ -71,6 +100,142 @@ function App() {
     }
   };
 
+  const buildFilters = (): QueryFilters | null => {
+    const segmentFilters: SegmentFilter[] = [];
+
+    // Location filter (text, EQ)
+    if (selectedLocation) {
+      segmentFilters.push({
+        segment: "location",
+        type: "text",
+        logic: "OR",
+        rules: [{ op: "EQ", value: selectedLocation }]
+      });
+    }
+
+    // Industries filter (text, EQ with OR logic for multiple)
+    if (selectedIndustries.length > 0) {
+      segmentFilters.push({
+        segment: "industries",
+        type: "text",
+        logic: "OR",
+        rules: selectedIndustries.map(ind => ({ op: "EQ", value: ind }))
+      });
+    }
+
+    // Target Markets filter (text, EQ with OR logic for multiple)
+    if (selectedTargetMarkets.length > 0) {
+      segmentFilters.push({
+        segment: "target_markets",
+        type: "text",
+        logic: "OR",
+        rules: selectedTargetMarkets.map(tm => ({ op: "EQ", value: tm }))
+      });
+    }
+
+    // Funding Stage filter (text, EQ with OR logic for multiple)
+    if (selectedStages.length > 0) {
+      segmentFilters.push({
+        segment: "funding_stage",
+        type: "text",
+        logic: "OR",
+        rules: selectedStages.map(stage => ({ op: "EQ", value: stage }))
+      });
+    }
+
+    // Employee count filter (numeric, GTE/LTE)
+    const employeeRules: FilterRule[] = [];
+    if (minEmployees) {
+      employeeRules.push({ op: "GTE", value: parseInt(minEmployees) });
+    }
+    if (maxEmployees) {
+      employeeRules.push({ op: "LTE", value: parseInt(maxEmployees) });
+    }
+    if (employeeRules.length > 0) {
+      segmentFilters.push({
+        segment: "employee_count",
+        type: "numeric",
+        logic: "AND",
+        rules: employeeRules
+      });
+    }
+
+    // Funding amount filter (numeric, GTE/LTE)
+    const fundingRules: FilterRule[] = [];
+    if (minFunding) {
+      fundingRules.push({ op: "GTE", value: parseInt(minFunding) });
+    }
+    if (maxFunding) {
+      fundingRules.push({ op: "LTE", value: parseInt(maxFunding) });
+    }
+    if (fundingRules.length > 0) {
+      segmentFilters.push({
+        segment: "funding_amount",
+        type: "numeric",
+        logic: "AND",
+        rules: fundingRules
+      });
+    }
+
+    if (segmentFilters.length === 0) {
+      return null;
+    }
+
+    return {
+      logic: "AND",
+      filters: segmentFilters
+    };
+  };
+
+  const parseAppliedFilters = (filters: QueryFilters) => {
+    // Parse applied filters from backend and populate UI state
+    filters.filters.forEach(segmentFilter => {
+      switch (segmentFilter.segment) {
+        case "location":
+          if (segmentFilter.rules.length > 0 && segmentFilter.rules[0].op === "EQ") {
+            setSelectedLocation(segmentFilter.rules[0].value as string);
+          }
+          break;
+        case "industries":
+          const industries = segmentFilter.rules
+            .filter(r => r.op === "EQ")
+            .map(r => r.value as string);
+          setSelectedIndustries(industries);
+          break;
+        case "target_markets":
+          const markets = segmentFilter.rules
+            .filter(r => r.op === "EQ")
+            .map(r => r.value as string);
+          setSelectedTargetMarkets(markets);
+          break;
+        case "funding_stage":
+          const stages = segmentFilter.rules
+            .filter(r => r.op === "EQ")
+            .map(r => r.value as string);
+          setSelectedStages(stages);
+          break;
+        case "employee_count":
+          segmentFilter.rules.forEach(rule => {
+            if (rule.op === "GTE") {
+              setMinEmployees(String(rule.value));
+            } else if (rule.op === "LTE") {
+              setMaxEmployees(String(rule.value));
+            }
+          });
+          break;
+        case "funding_amount":
+          segmentFilter.rules.forEach(rule => {
+            if (rule.op === "GTE") {
+              setMinFunding(String(rule.value));
+            } else if (rule.op === "LTE") {
+              setMaxFunding(String(rule.value));
+            }
+          });
+          break;
+      }
+    });
+  };
+
   const handleSubmit = async () => {
     if (!inputValue.trim()) return;
 
@@ -78,20 +243,24 @@ function App() {
     setError(null);
 
     try {
+      // Build filters from current UI state
+      const filters = buildFilters();
+
       const response = await axios.post("http://localhost:8000/api/submit-query", {
         query: inputValue,
-        location: selectedLocation || undefined,
-        industries: selectedIndustries.length > 0 ? selectedIndustries : undefined,
-        target_markets: selectedTargetMarkets.length > 0 ? selectedTargetMarkets : undefined,
-        stages: selectedStages.length > 0 ? selectedStages : undefined,
-        min_employees: minEmployees ? parseInt(minEmployees) : undefined,
-        max_employees: maxEmployees ? parseInt(maxEmployees) : undefined,
-        min_funding: minFunding ? parseInt(minFunding) : undefined,
-        max_funding: maxFunding ? parseInt(maxFunding) : undefined,
+        filters: filters,
+        excluded_segments: excludedSegments
       });
 
       setCompanies(response.data.companies);
-      setInputValue("");
+
+      // Update applied filters from backend response
+      if (response.data.applied_filters) {
+        setAppliedFilters(response.data.applied_filters);
+        parseAppliedFilters(response.data.applied_filters);
+      }
+
+      // Keep the query in the search bar (don't clear it)
     } catch (err) {
       setError("Failed to submit query. Please try again.");
       console.error("Error submitting query:", err);
@@ -119,6 +288,47 @@ function App() {
     setMaxEmployees("");
     setMinFunding("");
     setMaxFunding("");
+    setAppliedFilters(null);
+    setExcludedSegments([]);
+  };
+
+  const removeFilter = (segment: string) => {
+    // Add segment to excluded list
+    if (!excludedSegments.includes(segment)) {
+      setExcludedSegments([...excludedSegments, segment]);
+    }
+
+    // Remove from applied filters
+    if (appliedFilters) {
+      setAppliedFilters({
+        ...appliedFilters,
+        filters: appliedFilters.filters.filter(f => f.segment !== segment)
+      });
+    }
+
+    // Clear UI state for this segment
+    switch (segment) {
+      case "location":
+        setSelectedLocation(null);
+        break;
+      case "industries":
+        setSelectedIndustries([]);
+        break;
+      case "target_markets":
+        setSelectedTargetMarkets([]);
+        break;
+      case "funding_stage":
+        setSelectedStages([]);
+        break;
+      case "employee_count":
+        setMinEmployees("");
+        setMaxEmployees("");
+        break;
+      case "funding_amount":
+        setMinFunding("");
+        setMaxFunding("");
+        break;
+    }
   };
 
   const showResults = companies.length > 0 || error;
@@ -321,6 +531,65 @@ function App() {
               className="bg-white rounded-full"
             />
             </div>
+
+            {/* Applied Filters Display */}
+            {appliedFilters && appliedFilters.filters.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Applied Filters:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {appliedFilters.filters.map((filter, idx) => {
+                    const getFilterLabel = () => {
+                      switch (filter.segment) {
+                        case "location":
+                          return `📍 ${filter.rules.map(r => r.value).join(" OR ")}`;
+                        case "industries":
+                          return `🏢 ${filter.rules.map(r => r.value).join(" OR ")}`;
+                        case "target_markets":
+                          return `🎯 ${filter.rules.map(r => r.value).join(" OR ")}`;
+                        case "funding_stage":
+                          return `🚀 ${filter.rules.map(r => r.value).join(" OR ")}`;
+                        case "employee_count":
+                          const empMin = filter.rules.find(r => r.op === "GTE")?.value;
+                          const empMax = filter.rules.find(r => r.op === "LTE")?.value;
+                          if (empMin && empMax) return `👥 ${empMin}-${empMax} employees`;
+                          if (empMin) return `👥 ≥${empMin} employees`;
+                          if (empMax) return `👥 ≤${empMax} employees`;
+                          return `👥 Employees`;
+                        case "funding_amount":
+                          const fundMin = filter.rules.find(r => r.op === "GTE")?.value;
+                          const fundMax = filter.rules.find(r => r.op === "LTE")?.value;
+                          if (fundMin && fundMax) return `💰 $${(Number(fundMin)/1000000).toFixed(1)}M-$${(Number(fundMax)/1000000).toFixed(1)}M`;
+                          if (fundMin) return `💰 ≥$${(Number(fundMin)/1000000).toFixed(1)}M`;
+                          if (fundMax) return `💰 ≤$${(Number(fundMax)/1000000).toFixed(1)}M`;
+                          return `💰 Funding`;
+                        default:
+                          return filter.segment;
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={idx}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 text-sm font-medium text-blue-900"
+                      >
+                        <span>{getFilterLabel()}</span>
+                        <button
+                          onClick={() => removeFilter(filter.segment)}
+                          className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                          aria-label={`Remove ${filter.segment} filter`}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -368,12 +637,38 @@ function App() {
                         <h3 className="text-2xl font-bold text-gray-900 mb-3">
                           {company.company_name}
                         </h3>
+                        {company.explanation && (
+                          <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                            <p className="text-sm font-semibold text-blue-900 mb-1">✨ Why this company?</p>
+                            <p className="text-sm text-blue-800 leading-relaxed">
+                              {company.explanation}
+                            </p>
+                          </div>
+                        )}
                         {company.description && (
                           <p className="text-gray-600 mb-4 text-base leading-relaxed">
                             {company.description}
                           </p>
                         )}
                         <div className="flex flex-wrap gap-2.5 items-center">
+                          {company.industries && company.industries.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {company.industries.map((industry, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 text-purple-800 text-xs font-medium border border-purple-200">
+                                  🏢 {industry}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {company.target_markets && company.target_markets.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {company.target_markets.map((market, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-50 text-teal-800 text-xs font-medium border border-teal-200">
+                                  🎯 {market}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           {company.stage && (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-semibold border border-yellow-200">
                               🚀 {company.stage}
@@ -385,13 +680,13 @@ function App() {
                             </span>
                           )}
                           {company.employee_count && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-50 text-purple-800 text-sm font-semibold border border-purple-200">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-800 text-sm font-semibold border border-indigo-200">
                               👥 {company.employee_count} employees
                             </span>
                           )}
-                          {company.city && (
+                          {(company.location || company.city) && (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">
-                              📍 {company.city}
+                              📍 {company.location || company.city}
                             </span>
                           )}
                           {company.website_url && (
