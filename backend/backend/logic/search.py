@@ -1,12 +1,16 @@
 """
 Business logic for search operations.
 """
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from backend.db.database import Company
 from backend.es.client import es_client
-from backend.es.operations import search_companies_by_vector as es_search_companies
+from backend.es.operations import search_companies_with_filters
+from backend.llm.query_extractor import extract_query_filters
+from backend.logic.filter_merger import merge_filters
+from backend.logic.explainer import explain_result
+from backend.models.filters import QueryFilters
 
 
 def search_companies(
@@ -76,3 +80,70 @@ def search_companies(
         companies = [company_dict[cid] for cid in company_ids if cid in company_dict]
 
     return companies
+
+
+def search_companies_with_extraction(
+    query_text: str,
+    db: Session,
+    user_filters: Optional[QueryFilters] = None,
+    excluded_segments: List[str] = None,
+    size: int = 10,
+) -> Tuple[List[Tuple[Company, str]], QueryFilters]:
+    """
+    Search for companies with LLM extraction and explainability.
+
+    Steps:
+    1. Extract filters from query using LLM
+    2. Merge user filters with LLM filters (user overrides)
+    3. Perform vector search with merged filters
+    4. Generate explanations for each result
+    5. Return companies with explanations and applied filters
+
+    Args:
+        query_text: Natural language query
+        db: Database session
+        user_filters: Optional filters provided by user
+        excluded_segments: Segments to exclude from extraction
+        size: Number of results to return
+
+    Returns:
+        Tuple of:
+        - List of (Company, explanation) tuples
+        - Applied filters (merged result)
+    """
+    if excluded_segments is None:
+        excluded_segments = []
+
+    # Step 1: Extract filters from query using LLM
+    llm_filters = extract_query_filters(query_text, db, excluded_segments)
+
+    # Step 2: Merge user filters with LLM filters (user overrides)
+    applied_filters = merge_filters(user_filters, llm_filters, excluded_segments)
+
+    # Step 3: Perform vector search with merged filters
+    search_results = search_companies_with_filters(
+        es_client, query_text=query_text, filters=applied_filters, size=size
+    )
+
+    # Extract company IDs and scores from search results
+    company_scores = {int(hit["_id"]): hit["_score"] for hit in search_results}
+    company_ids = list(company_scores.keys())
+
+    # Step 4: Fetch full company details from PostgreSQL
+    companies_with_explanations = []
+    if company_ids:
+        companies = db.query(Company).filter(Company.id.in_(company_ids)).all()
+
+        # Sort companies to match Elasticsearch order
+        company_dict = {company.id: company for company in companies}
+        sorted_companies = [
+            company_dict[cid] for cid in company_ids if cid in company_dict
+        ]
+
+        # Step 5: Generate explanations
+        for company in sorted_companies:
+            score = company_scores.get(company.id, 0.0)
+            explanation = explain_result(company, query_text, applied_filters, score)
+            companies_with_explanations.append((company, explanation))
+
+    return companies_with_explanations, applied_filters

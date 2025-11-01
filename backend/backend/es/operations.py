@@ -1,10 +1,12 @@
-from typing import List
+from typing import List, Optional
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
 from backend.db.database import Company
-from backend.es.embeddings import generate_embeddings_batch
+from backend.es.embeddings import generate_embeddings_batch, generate_embedding
 from backend.es.index import COMPANY_INDEX_NAME
+from backend.es.filter_converter import filters_to_es_query
+from backend.models.filters import QueryFilters
 
 
 def index_company(es: Elasticsearch, company: Company, index_name: str = COMPANY_INDEX_NAME):
@@ -215,6 +217,48 @@ def search_companies_by_vector(
             },
             "_source": {
                 "excludes": ["description_vector"]
+            }
+        }
+
+    response = es.search(index=index_name, body=search_body)
+    return response["hits"]["hits"]
+
+
+def search_companies_with_filters(
+    es: Elasticsearch,
+    query_text: str,
+    filters: Optional[QueryFilters] = None,
+    size: int = 10,
+    index_name: str = COMPANY_INDEX_NAME,
+) -> List[dict]:
+    """
+    Search companies using the new QueryFilters structure.
+
+    Args:
+        es: Elasticsearch client
+        query_text: The search query text
+        filters: QueryFilters object containing structured filters
+        size: Number of results to return
+        index_name: Name of the index to search
+
+    Returns:
+        List of search result hits with scores
+    """
+    # Generate embedding for query text
+    query_vector = generate_embedding(query_text)
+
+    # Convert filters to ES query
+    if filters and filters.filters:
+        search_body = filters_to_es_query(filters, query_vector)
+        search_body["size"] = size
+    else:
+        # No filters: use pure kNN
+        search_body = {
+            "knn": {
+                "field": "description_vector",
+                "query_vector": query_vector,
+                "k": size,
+                "num_candidates": size * 10,
             }
         }
 

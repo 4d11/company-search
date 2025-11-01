@@ -5,23 +5,16 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db.database import Location, Industry, TargetMarket, FundingStage, get_db
-from backend.logic.search import search_companies
+from backend.logic.search import search_companies_with_extraction
+from backend.models.filters import QueryFilters
 
 router = APIRouter()
 
 
 class QueryRequest(BaseModel):
     query: str
-    location: Optional[str] = None
-    industries: Optional[List[str]] = None
-    target_markets: Optional[List[str]] = None
-    min_employees: Optional[int] = None
-    max_employees: Optional[int] = None
-    stages: Optional[List[str]] = None
-    min_stage_order: Optional[int] = None
-    max_stage_order: Optional[int] = None
-    min_funding: Optional[int] = None
-    max_funding: Optional[int] = None
+    filters: Optional[QueryFilters] = None
+    excluded_segments: Optional[List[str]] = None
 
 
 class CompanyResponse(BaseModel):
@@ -37,12 +30,13 @@ class CompanyResponse(BaseModel):
     location: Optional[str] = None
     industries: List[str] = []
     target_markets: List[str] = []
+    explanation: Optional[str] = None
 
     class Config:
         from_attributes = True
 
     @staticmethod
-    def from_company(company):
+    def from_company(company, explanation: str = None):
         """Convert Company model to CompanyResponse."""
         return CompanyResponse(
             id=company.id,
@@ -56,12 +50,14 @@ class CompanyResponse(BaseModel):
             funding_amount=company.funding_amount,
             location=company.location.city if company.location else None,
             industries=[ind.name for ind in company.industries],
-            target_markets=[tm.name for tm in company.target_markets]
+            target_markets=[tm.name for tm in company.target_markets],
+            explanation=explanation
         )
 
 
 class QueryResponse(BaseModel):
     companies: list[CompanyResponse]
+    applied_filters: QueryFilters
 
 
 class FilterOptionsResponse(BaseModel):
@@ -91,23 +87,26 @@ async def get_filter_options(db: Session = Depends(get_db)):
 
 @router.post("/submit-query", response_model=QueryResponse)
 async def submit_query(request: QueryRequest, db: Session = Depends(get_db)):
-    companies = search_companies(
+    """
+    Submit a natural language query with optional filters.
+    LLM extraction is always enabled to extract filters from the query.
+    """
+    # Search with LLM extraction and explainability
+    companies_with_explanations, applied_filters = search_companies_with_extraction(
         query_text=request.query,
         db=db,
-        size=10,
-        location=request.location,
-        industries=request.industries,
-        target_markets=request.target_markets,
-        min_employees=request.min_employees,
-        max_employees=request.max_employees,
-        stages=request.stages,
-        min_stage_order=request.min_stage_order,
-        max_stage_order=request.max_stage_order,
-        min_funding=request.min_funding,
-        max_funding=request.max_funding
+        user_filters=request.filters,
+        excluded_segments=request.excluded_segments or [],
+        size=10
     )
 
-    # Convert Company models to CompanyResponse
-    company_responses = [CompanyResponse.from_company(company) for company in companies]
+    # Convert to response format
+    company_responses = [
+        CompanyResponse.from_company(company, explanation)
+        for company, explanation in companies_with_explanations
+    ]
 
-    return QueryResponse(companies=company_responses)
+    return QueryResponse(
+        companies=company_responses,
+        applied_filters=applied_filters
+    )
