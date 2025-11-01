@@ -1,6 +1,7 @@
 import "./App.css";
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { Autocomplete, TextField, Chip } from "@mui/material";
 
 interface Company {
   id: number;
@@ -9,6 +10,13 @@ interface Company {
   city: string | null;
   description: string | null;
   website_url: string | null;
+}
+
+interface FilterOptions {
+  locations: string[];
+  industries: string[];
+  target_markets: string[];
+  stages: string[];
 }
 
 const exampleQueries = [
@@ -26,11 +34,39 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [placeholder, setPlaceholder] = useState("");
 
+  // Filter states
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+    locations: [],
+    industries: [],
+    target_markets: [],
+    stages: []
+  });
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
+  const [selectedTargetMarkets, setSelectedTargetMarkets] = useState<string[]>([]);
+  const [selectedStages, setSelectedStages] = useState<string[]>([]);
+  const [minEmployees, setMinEmployees] = useState<string>("");
+  const [maxEmployees, setMaxEmployees] = useState<string>("");
+  const [minFunding, setMinFunding] = useState<string>("");
+  const [maxFunding, setMaxFunding] = useState<string>("");
+
   useEffect(() => {
     // Randomly select a placeholder on component mount
     const randomQuery = exampleQueries[Math.floor(Math.random() * exampleQueries.length)];
     setPlaceholder(`e.g. ${randomQuery}`);
+
+    // Fetch filter options
+    fetchFilterOptions();
   }, []);
+
+  const fetchFilterOptions = async () => {
+    try {
+      const response = await axios.get("http://localhost:8000/api/filter-options");
+      setFilterOptions(response.data);
+    } catch (err) {
+      console.error("Error fetching filter options:", err);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!inputValue.trim()) return;
@@ -41,6 +77,14 @@ function App() {
     try {
       const response = await axios.post("http://localhost:8000/api/submit-query", {
         query: inputValue,
+        location: selectedLocation || undefined,
+        industries: selectedIndustries.length > 0 ? selectedIndustries : undefined,
+        target_markets: selectedTargetMarkets.length > 0 ? selectedTargetMarkets : undefined,
+        stages: selectedStages.length > 0 ? selectedStages : undefined,
+        min_employees: minEmployees ? parseInt(minEmployees) : undefined,
+        max_employees: maxEmployees ? parseInt(maxEmployees) : undefined,
+        min_funding: minFunding ? parseInt(minFunding) : undefined,
+        max_funding: maxFunding ? parseInt(maxFunding) : undefined,
       });
 
       setCompanies(response.data.companies);
@@ -66,6 +110,118 @@ function App() {
         <h1 className="text-2xl font-medium text-gray-800 text-center">
           What are you looking for?
         </h1>
+
+        {/* Filters */}
+        <div className="w-full flex flex-col gap-3">
+          <Autocomplete
+            value={selectedLocation}
+            onChange={(_, newValue) => setSelectedLocation(newValue)}
+            options={filterOptions.locations}
+            renderInput={(params) => (
+              <TextField {...params} label="Location" placeholder="Select a city" size="small" />
+            )}
+            disabled={isLoading}
+            className="bg-white rounded-lg"
+          />
+
+          <Autocomplete
+            multiple
+            value={selectedIndustries}
+            onChange={(_, newValue) => setSelectedIndustries(newValue)}
+            options={filterOptions.industries}
+            renderInput={(params) => (
+              <TextField {...params} label="Industries" placeholder="Select industries" size="small" />
+            )}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip label={option} size="small" {...getTagProps({ index })} />
+              ))
+            }
+            disabled={isLoading}
+            className="bg-white rounded-lg"
+          />
+
+          <Autocomplete
+            multiple
+            value={selectedTargetMarkets}
+            onChange={(_, newValue) => setSelectedTargetMarkets(newValue)}
+            options={filterOptions.target_markets}
+            renderInput={(params) => (
+              <TextField {...params} label="Target Markets" placeholder="Select target markets" size="small" />
+            )}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip label={option} size="small" {...getTagProps({ index })} />
+              ))
+            }
+            disabled={isLoading}
+            className="bg-white rounded-lg"
+          />
+
+          <Autocomplete
+            multiple
+            value={selectedStages}
+            onChange={(_, newValue) => setSelectedStages(newValue)}
+            options={filterOptions.stages}
+            renderInput={(params) => (
+              <TextField {...params} label="Funding Stage" placeholder="Select funding stages" size="small" />
+            )}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip label={option} size="small" {...getTagProps({ index })} />
+              ))
+            }
+            disabled={isLoading}
+            className="bg-white rounded-lg"
+          />
+
+          <div className="flex gap-3">
+            <TextField
+              label="Min Employees"
+              placeholder="e.g. 10"
+              type="number"
+              size="small"
+              value={minEmployees}
+              onChange={(e) => setMinEmployees(e.target.value)}
+              disabled={isLoading}
+              className="bg-white rounded-lg flex-1"
+            />
+            <TextField
+              label="Max Employees"
+              placeholder="e.g. 500"
+              type="number"
+              size="small"
+              value={maxEmployees}
+              onChange={(e) => setMaxEmployees(e.target.value)}
+              disabled={isLoading}
+              className="bg-white rounded-lg flex-1"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <TextField
+              label="Min Funding ($)"
+              placeholder="e.g. 1000000"
+              type="number"
+              size="small"
+              value={minFunding}
+              onChange={(e) => setMinFunding(e.target.value)}
+              disabled={isLoading}
+              className="bg-white rounded-lg flex-1"
+            />
+            <TextField
+              label="Max Funding ($)"
+              placeholder="e.g. 50000000"
+              type="number"
+              size="small"
+              value={maxFunding}
+              onChange={(e) => setMaxFunding(e.target.value)}
+              disabled={isLoading}
+              className="bg-white rounded-lg flex-1"
+            />
+          </div>
+        </div>
+
         <div className="relative w-full">
           <textarea
             value={inputValue}
