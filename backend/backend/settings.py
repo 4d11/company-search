@@ -25,10 +25,16 @@ class Settings(BaseSettings):
     embedding_model_name: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
 
-    # LLM settings for attribute extraction
-    llm_provider: str = "ollama"  # or "openai", "anthropic", etc.
+    # LLM settings for attribute extraction (seeding time - uses Ollama)
+    llm_provider: str = "ollama"
     llm_model: str = "llama3.2:3b"
     llm_base_url: str = "http://localhost:11434"
+
+    # LLM settings for query extraction (query time - uses online API)
+    query_llm_provider: str = "anthropic"  # or "openai"
+    query_llm_model: str = "claude-3-5-haiku-20241022"  # Cheapest but decent for testing
+    query_llm_api_key: Optional[str] = None
+    query_llm_base_url: Optional[str] = None
 
     # LLM extraction cache settings (for LOCAL development only)
     use_llm_cache: bool = True

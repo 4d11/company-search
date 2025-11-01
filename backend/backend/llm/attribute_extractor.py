@@ -78,7 +78,6 @@ def extract_company_attributes(
         if cached:
             print(f"    ✓ Using cached extraction for {company_name}")
             return cached
-    return {}
 
     # Get supported attributes from database
     supported = get_supported_attributes(db)
