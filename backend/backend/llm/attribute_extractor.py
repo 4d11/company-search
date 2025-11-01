@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.db.database import FundingStage, Industry, Location, TargetMarket
-from backend.llm.client import llm_client
+from backend.llm.client import get_llm_client
 from backend.llm.extraction_cache import extraction_cache
 from backend.settings import settings
 
@@ -78,6 +78,7 @@ def extract_company_attributes(
         if cached:
             print(f"    ✓ Using cached extraction for {company_name}")
             return cached
+    return {}
 
     # Get supported attributes from database
     supported = get_supported_attributes(db)
@@ -93,6 +94,7 @@ def extract_company_attributes(
 
     # Get LLM response
     try:
+        llm_client = get_llm_client()
         response = llm_client.generate(prompt=prompt)
 
         # Validate and clean the response

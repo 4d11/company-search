@@ -83,24 +83,24 @@ def search_companies(
 
 
 def search_companies_with_extraction(
-    query_text: str,
+    query_text: Optional[str],
     db: Session,
     user_filters: Optional[QueryFilters] = None,
     excluded_segments: List[str] = None,
     size: int = 10,
 ) -> Tuple[List[Tuple[Company, str]], QueryFilters]:
     """
-    Search for companies with LLM extraction and explainability.
+    Search for companies with optional LLM extraction and explainability.
 
     Steps:
-    1. Extract filters from query using LLM
+    1. Extract filters from query using LLM (if query provided)
     2. Merge user filters with LLM filters (user overrides)
-    3. Perform vector search with merged filters
+    3. Perform search with merged filters
     4. Generate explanations for each result
     5. Return companies with explanations and applied filters
 
     Args:
-        query_text: Natural language query
+        query_text: Optional natural language query (if None, only uses user_filters)
         db: Database session
         user_filters: Optional filters provided by user
         excluded_segments: Segments to exclude from extraction
@@ -114,8 +114,12 @@ def search_companies_with_extraction(
     if excluded_segments is None:
         excluded_segments = []
 
-    # Step 1: Extract filters from query using LLM
-    llm_filters = extract_query_filters(query_text, db, excluded_segments)
+    # Step 1: Extract filters from query using LLM (skip if no query provided)
+    if query_text and query_text.strip():
+        llm_filters = extract_query_filters(query_text, db, es_client, excluded_segments)
+    else:
+        # No query provided - use empty filters (only user filters will be applied)
+        llm_filters = QueryFilters(logic="AND", filters=[])
 
     # Step 2: Merge user filters with LLM filters (user overrides)
     applied_filters = merge_filters(user_filters, llm_filters, excluded_segments)

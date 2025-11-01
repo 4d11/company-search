@@ -226,17 +226,17 @@ def search_companies_by_vector(
 
 def search_companies_with_filters(
     es: Elasticsearch,
-    query_text: str,
+    query_text: Optional[str],
     filters: Optional[QueryFilters] = None,
     size: int = 10,
     index_name: str = COMPANY_INDEX_NAME,
 ) -> List[dict]:
     """
-    Search companies using the new QueryFilters structure.
+    Search companies using the QueryFilters structure.
 
     Args:
         es: Elasticsearch client
-        query_text: The search query text
+        query_text: Optional search query text (if None, only uses filters)
         filters: QueryFilters object containing structured filters
         size: Number of results to return
         index_name: Name of the index to search
@@ -244,23 +244,55 @@ def search_companies_with_filters(
     Returns:
         List of search result hits with scores
     """
-    # Generate embedding for query text
-    query_vector = generate_embedding(query_text)
+    # If query text is provided, generate embedding for vector search
+    if query_text and query_text.strip():
+        query_vector = generate_embedding(query_text)
 
-    # Convert filters to ES query
-    if filters and filters.filters:
-        search_body = filters_to_es_query(filters, query_vector)
-        search_body["size"] = size
-    else:
-        # No filters: use pure kNN
-        search_body = {
-            "knn": {
-                "field": "description_vector",
-                "query_vector": query_vector,
-                "k": size,
-                "num_candidates": size * 10,
+        # Convert filters to ES query with vector search
+        if filters and filters.filters:
+            search_body = filters_to_es_query(filters, query_vector)
+            search_body["size"] = size
+        else:
+            # No filters: use pure kNN
+            search_body = {
+                "knn": {
+                    "field": "description_vector",
+                    "query_vector": query_vector,
+                    "k": size,
+                    "num_candidates": size * 10,
+                }
             }
-        }
+    else:
+        # No query text - use only filters (no vector search)
+        if filters and filters.filters:
+            # Convert filters to match_all with filters
+            from backend.es.filter_converter import convert_segment_filter
+            from backend.models.filters import LogicType
+
+            filter_clauses = []
+            for segment_filter in filters.filters:
+                clause = convert_segment_filter(segment_filter)
+                if clause:
+                    filter_clauses.append(clause)
+
+            # Combine filter clauses
+            if len(filter_clauses) == 1:
+                filter_query = filter_clauses[0]
+            elif filters.logic == LogicType.AND:
+                filter_query = {"bool": {"must": filter_clauses}}
+            else:  # OR
+                filter_query = {"bool": {"should": filter_clauses, "minimum_should_match": 1}}
+
+            search_body = {
+                "query": filter_query,
+                "size": size
+            }
+        else:
+            # No query and no filters - return all
+            search_body = {
+                "query": {"match_all": {}},
+                "size": size
+            }
 
     response = es.search(index=index_name, body=search_body)
     return response["hits"]["hits"]

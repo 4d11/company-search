@@ -1,29 +1,90 @@
 You are an expert at extracting structured search filters from natural language queries about companies,
 specfically startups.
 
-Given a user's query, extract relevant filters. Only use values from the provided lists for text segments.
+Given a user's query, extract relevant filters. The search engine will handle fuzzy matching for typos and variations.
 
 User Query: {query}
 
 Available Segments and Values:
 
 TEXT SEGMENTS:
-- location: {locations}
-- industries: {industries}
-- target_markets: {target_markets}
-- funding_stage: {funding_stages}
+
+location (fuzzy matched):
+  Examples: {location_examples}
+  Note: Use standard city names. Expand abbreviations when possible (e.g., "SF" → "San Francisco", "NYC" → "New York")
+
+industries (fuzzy matched):
+  Examples: {industry_examples}
+  Note: Use descriptive names. Expand abbreviations when possible (e.g., "AI" → "AI/ML", "fintech" → "FinTech")
+
+target_markets (fuzzy matched):
+  Examples: {target_market_examples}
+  Note: Use standard market segment names
+
+funding_stage (exact match required - use EXACTLY one of these values):
+  {funding_stages}
+  Note: Must match exactly one of these values (case-sensitive)
 
 NUMERIC SEGMENTS:
 - employee_count: Integer (number of employees)
 - funding_amount: Integer (total funding in USD)
 - stage_order: Integer (0-8, representing funding stage progression)
 
+
+Return ONLY a valid JSON object with this exact structure:
+{{
+    "logic": "AND",        ← TOP-LEVEL logic: combines all filters below
+    "filters": [
+        {{
+            "segment": "industries",
+            "type": "text",
+            "logic": "OR",     ← SEGMENT-LEVEL logic: how to combine the rules below (OR/AND)
+            "rules": [
+                {{"op": "EQ", "value": "AI/ML"}},      ← RULE-LEVEL op: comparison operator (EQ/NEQ/GT/GTE/LT/LTE)
+                {{"op": "EQ", "value": "FinTech"}}
+            ]
+        }},
+        {{
+            "segment": "employee_count",
+            "type": "numeric",
+            "logic": "AND",    ← SEGMENT-LEVEL logic: AND for ranges
+            "rules": [
+                {{"op": "GTE", "value": 50}},          ← RULE-LEVEL op: GTE (greater than or equal)
+                {{"op": "LTE", "value": 100}}          ← RULE-LEVEL op: LTE (less than or equal)
+            ]
+        }}
+    ]
+}}
+
+CRITICAL FIELD DEFINITIONS:
+1. TOP-LEVEL "logic": How to combine all segment filters (always "AND" or "OR")
+2. SEGMENT-LEVEL "logic": How to combine rules WITHIN that segment (always "AND" or "OR")
+   - Use "OR" when user says "or" (e.g., "AI or FinTech")
+   - Use "AND" for ranges (e.g., "50-100 employees")
+   - If only one rule, use "AND"
+3. RULE-LEVEL "op": The comparison operator for each individual rule
+   - For text: "EQ" or "NEQ"
+   - For numbers: "EQ", "NEQ", "GT", "GTE", "LT", "LTE"
+
+⚠️ NEVER USE "EQ" AS A LOGIC VALUE! "logic" is ONLY "AND" or "OR"
+⚠️ NEVER USE "AND" or "OR" AS AN OP VALUE! "op" is "EQ", "GTE", etc.
+
+4. "type" must be EXACTLY "text" or "numeric"
+5. String values must be quoted, numeric values must NOT be quoted
+
+If no filters can be extracted, return:
+{{
+    "logic": "AND",
+    "filters": []
+}}
+
 Instructions:
 1. Extract all relevant filters from the query
-2. For text segments, only use values from the provided lists (case-sensitive)
-3. For numeric segments, extract numeric values and appropriate operators
-4. Determine the correct logic (AND/OR) for combining rules within each segment
-5. Common patterns:
+2. For location, industries, and target_markets: use reasonable variations (fuzzy matching will handle typos and alternatives)
+3. For funding_stage: use exact values from the list above
+4. For numeric segments, extract numeric values and appropriate operators
+5. Determine the correct logic (AND/OR) for combining rules within each segment
+6. Common patterns:
    - "AI or FinTech" → industries with OR logic
    - "50-100 employees" → employee_count with AND logic (GTE 50, LTE 100)
    - "Series A or B" → funding_stage with OR logic
@@ -31,45 +92,10 @@ Instructions:
    - "more than $1M funding" → funding_amount with GT or GTE operator
    - "Series A or later" → stage_order with GTE operator (Series A = 3)
 
-6. Funding stage order mapping:
+7. Funding stage order mapping:
    - Stealth = 0, Pre-Seed = 1, Seed = 2, Series A = 3, Series B = 4,
    - Series C = 5, Series D+ = 6, Growth = 7, Public = 8
 
-7. Do NOT extract filters for segments in the excluded list: {excluded_segments}
+8. Do NOT extract filters for segments in the excluded list: {excluded_segments}
 
-Return ONLY a valid JSON object with this exact structure:
-{{
-    "logic": "AND",
-    "filters": [
-        {{
-            "segment": "industries",
-            "type": "text",
-            "logic": "OR",
-            "rules": [
-                {{"op": "EQ", "value": "AI/ML"}},
-                {{"op": "EQ", "value": "FinTech"}}
-            ]
-        }},
-        {{
-            "segment": "employee_count",
-            "type": "numeric",
-            "logic": "AND",
-            "rules": [
-                {{"op": "GTE", "value": 50}},
-                {{"op": "LTE", "value": 100}}
-            ]
-        }}
-    ]
-}}
 
-IMPORTANT RULES:
-1. "type" must be EXACTLY "text" or "numeric"
-2. "logic" must be EXACTLY "AND" or "OR"
-3. "op" must be exactly one of: EQ, NEQ, GT, GTE, LT, LTE
-4. String values must be quoted, numeric values must NOT be quoted
-
-If no filters can be extracted, return:
-{{
-    "logic": "AND",
-    "filters": []
-}}

@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 class QueryRequest(BaseModel):
-    query: str
+    query: Optional[str] = None
     filters: Optional[QueryFilters] = None
     excluded_segments: Optional[List[str]] = None
 
@@ -89,7 +89,8 @@ async def get_filter_options(db: Session = Depends(get_db)):
 async def submit_query(request: QueryRequest, db: Session = Depends(get_db)):
     """
     Submit a natural language query with optional filters.
-    LLM extraction is always enabled to extract filters from the query.
+    LLM extraction is performed when a query is provided.
+    If no query is provided, only user filters are used for searching.
     """
     # Search with LLM extraction and explainability
     companies_with_explanations, applied_filters = search_companies_with_extraction(
@@ -106,7 +107,8 @@ async def submit_query(request: QueryRequest, db: Session = Depends(get_db)):
         for company, explanation in companies_with_explanations
     ]
 
-    return QueryResponse(
+    resp =  QueryResponse(
         companies=company_responses,
         applied_filters=applied_filters
     )
+    return resp

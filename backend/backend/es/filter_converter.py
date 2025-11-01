@@ -29,7 +29,7 @@ def convert_segment_filter(segment_filter: SegmentFilter) -> dict:
         value = rule.value
 
         if filter_type == FilterType.TEXT:
-            # Text segment filters
+            # Text segment filters (exact term queries - values are pre-validated)
             if op == OperatorType.EQ:
                 clauses.append({"term": {segment: value}})
             elif op == OperatorType.NEQ:
