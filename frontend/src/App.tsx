@@ -129,25 +129,23 @@ function App() {
       <div className={`w-full max-w-5xl mx-auto transition-all duration-500 ${hasSearched ? 'pt-8' : 'min-h-screen flex flex-col justify-center'}`}>
         {/* Search Section */}
         <div className={`flex flex-col items-center gap-6 px-6 ${hasSearched ? '' : 'mb-20'}`}>
-          {/* Magnifying Glass Icon */}
-          {!hasSearched && (
-            <div className={`mb-8 ${isLoading ? 'animate-bounce' : ''}`}>
-              <svg
-                className="w-24 h-24 text-blue-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </div>
-          )}
+          {/* Magnifying Glass Icon - Always visible */}
+          <div className={`mb-8 ${isLoading ? 'animate-bounce' : ''}`}>
+            <svg
+              className="w-24 h-24 text-blue-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
 
           {/* Search Bar */}
           <div className={`relative ${hasSearched ? 'w-full' : 'w-full max-w-3xl'}`}>
