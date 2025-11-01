@@ -1,5 +1,4 @@
 # app/database.py
-import os
 from datetime import datetime
 from typing import Union
 
@@ -15,10 +14,10 @@ from sqlalchemy import (
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+from backend.settings import settings
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+    settings.database_url,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
