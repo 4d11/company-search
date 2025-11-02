@@ -4,12 +4,19 @@ from starlette.middleware.cors import CORSMiddleware
 
 from backend.db import database
 from backend.routes import admin, query
+from backend.settings import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables on startup
     database.Base.metadata.create_all(bind=database.engine)
+
+    # Auto-seed database if enabled and not already seeded
+    if settings.auto_seed_database:
+        from scripts.seed import seed_database
+        seed_database()
+
     yield
     # Clean up...
 

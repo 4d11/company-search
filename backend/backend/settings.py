@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     use_llm_cache: bool = True
     llm_cache_db_path: str = str(Path(__file__).parent.parent / ".llm_cache.db")
 
+    # Application settings
+    auto_seed_database: bool = True  # Auto-seed database on startup if empty
     log_level: str = "INFO"
 
 
