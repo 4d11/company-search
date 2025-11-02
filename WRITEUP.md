@@ -162,4 +162,4 @@ For vector generation, I have used BGE-M3 since it is a local model and can give
 1. I chose my models and cutoffs based on brief trial and error and some test cases. Given more time,
 I would like to be able to try different approaches and evaluate based on their precision and recall
 2. Complex query builder on the frontend. The ability for our VC to build more complex queries involving nested ands and ors would be useful for doing deep dives into results
-3. Better cache support. 
+3. Better cache support. I have some basic caching for query explanations but I would like to have added a multi-level cache to decrease the time it takes to get results

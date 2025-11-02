@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     elasticsearch_api_key: Optional[str] = None
 
     # Embedding model settings
-    embedding_model_name: str = "BAAI/bge-m3"
-    embedding_dimensions: int = 1024
+    embedding_model_name: str = "all-MiniLM-L6-v2"
+    embedding_dimensions: int = 384
 
     llm_model: str = "gpt-4o-mini"
     llm_api_key: Optional[str] = None
