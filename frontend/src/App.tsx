@@ -1,7 +1,10 @@
 import "./App.css";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
-import { Autocomplete, TextField, Chip, Typography } from "@mui/material";
+import { FilterAutocomplete } from "./components/FilterAutocomplete";
+import { NumericRangeFilter } from "./components/NumericRangeFilter";
+import { CompanyCard } from "./components/CompanyCard";
+import { API_ENDPOINTS, FILTER_CONFIG, NUMERIC_FILTER_CONFIG } from "./constants/filters";
 
 interface Company {
   id: number;
@@ -24,6 +27,8 @@ interface FilterOptions {
   industries: string[];
   target_markets: string[];
   stages: string[];
+  business_models: string[];
+  revenue_models: string[];
 }
 
 type OperatorType = "EQ" | "NEQ" | "GT" | "GTE" | "LT" | "LTE";
@@ -67,12 +72,16 @@ function App() {
     locations: [],
     industries: [],
     target_markets: [],
-    stages: []
+    stages: [],
+    business_models: [],
+    revenue_models: []
   });
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
   const [selectedTargetMarkets, setSelectedTargetMarkets] = useState<string[]>([]);
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
+  const [selectedBusinessModels, setSelectedBusinessModels] = useState<string[]>([]);
+  const [selectedRevenueModels, setSelectedRevenueModels] = useState<string[]>([]);
   const [minEmployees, setMinEmployees] = useState<number | null>(null);
   const [maxEmployees, setMaxEmployees] = useState<number | null>(null);
   const [minFunding, setMinFunding] = useState<number | null>(null);
@@ -82,6 +91,15 @@ function App() {
   const [appliedFilters, setAppliedFilters] = useState<QueryFilters | null>(null);
   const [excludedSegments, setExcludedSegments] = useState<string[]>([]);
 
+  const fetchFilterOptions = useCallback(async () => {
+    try {
+      const response = await axios.get(API_ENDPOINTS.FILTER_OPTIONS);
+      setFilterOptions(response.data);
+    } catch (err) {
+      console.error("Error fetching filter options:", err);
+    }
+  }, []);
+
   useEffect(() => {
     // Randomly select a placeholder on component mount
     const randomQuery = exampleQueries[Math.floor(Math.random() * exampleQueries.length)];
@@ -89,16 +107,7 @@ function App() {
 
     // Fetch filter options
     fetchFilterOptions();
-  }, []);
-
-  const fetchFilterOptions = async () => {
-    try {
-      const response = await axios.get("http://localhost:8000/api/filter-options");
-      setFilterOptions(response.data);
-    } catch (err) {
-      console.error("Error fetching filter options:", err);
-    }
-  };
+  }, [fetchFilterOptions]);
 
   const buildFilters = (): QueryFilters | null => {
     const segmentFilters: SegmentFilter[] = [];
@@ -140,6 +149,26 @@ function App() {
         type: "text",
         logic: "OR",
         rules: selectedStages.map(stage => ({ op: "EQ", value: stage }))
+      });
+    }
+
+    // Business Models filter (text, EQ with OR logic for multiple)
+    if (selectedBusinessModels.length > 0) {
+      segmentFilters.push({
+        segment: "business_models",
+        type: "text",
+        logic: "OR",
+        rules: selectedBusinessModels.map(model => ({ op: "EQ", value: model }))
+      });
+    }
+
+    // Revenue Models filter (text, EQ with OR logic for multiple)
+    if (selectedRevenueModels.length > 0) {
+      segmentFilters.push({
+        segment: "revenue_models",
+        type: "text",
+        logic: "OR",
+        rules: selectedRevenueModels.map(model => ({ op: "EQ", value: model }))
       });
     }
 
@@ -215,6 +244,18 @@ function App() {
             .map(r => r.value as string);
           setSelectedStages(stages);
           break;
+        case "business_models":
+          const businessModels = segmentFilter.rules
+            .filter(r => r.op === "EQ")
+            .map(r => r.value as string);
+          setSelectedBusinessModels(businessModels);
+          break;
+        case "revenue_models":
+          const revenueModels = segmentFilter.rules
+            .filter(r => r.op === "EQ")
+            .map(r => r.value as string);
+          setSelectedRevenueModels(revenueModels);
+          break;
         case "employee_count":
           const empMinRule = segmentFilter.rules.find(r => r.op === "GTE");
           const empMaxRule = segmentFilter.rules.find(r => r.op === "LTE");
@@ -250,7 +291,7 @@ function App() {
       // Build filters from current UI state
       const filters = buildFilters();
 
-      const response = await axios.post("http://localhost:8000/api/submit-query", {
+      const response = await axios.post(API_ENDPOINTS.SUBMIT_QUERY, {
         query: inputValue,
         filters: filters,
         excluded_segments: excludedSegments
@@ -280,15 +321,20 @@ function App() {
     }
   };
 
-  const hasActiveFilters = selectedLocations.length > 0 || selectedIndustries.length > 0 || selectedTargetMarkets.length > 0 ||
-    selectedStages.length > 0 || minEmployees !== null || maxEmployees !== null ||
-    minFunding !== null || maxFunding !== null;
+  const hasActiveFilters = useMemo(() =>
+    selectedLocations.length > 0 || selectedIndustries.length > 0 || selectedTargetMarkets.length > 0 ||
+    selectedStages.length > 0 || selectedBusinessModels.length > 0 || selectedRevenueModels.length > 0 ||
+    minEmployees !== null || maxEmployees !== null || minFunding !== null || maxFunding !== null,
+    [selectedLocations, selectedIndustries, selectedTargetMarkets, selectedStages, selectedBusinessModels, selectedRevenueModels, minEmployees, maxEmployees, minFunding, maxFunding]
+  );
 
   const clearAllFilters = () => {
     setSelectedLocations([]);
     setSelectedIndustries([]);
     setSelectedTargetMarkets([]);
     setSelectedStages([]);
+    setSelectedBusinessModels([]);
+    setSelectedRevenueModels([]);
     setMinEmployees(null);
     setMaxEmployees(null);
     setMinFunding(null);
@@ -324,6 +370,12 @@ function App() {
         break;
       case "funding_stage":
         setSelectedStages([]);
+        break;
+      case "business_models":
+        setSelectedBusinessModels([]);
+        break;
+      case "revenue_models":
+        setSelectedRevenueModels([]);
         break;
       case "employee_count":
         setMinEmployees(null);
@@ -398,229 +450,87 @@ function App() {
               </div>
 
               {/* Text Filters - Grid Layout */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <Autocomplete
-                  multiple
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <FilterAutocomplete
                   value={selectedLocations}
-                  onChange={(_, newValue) => setSelectedLocations(newValue)}
+                  onChange={setSelectedLocations}
                   options={filterOptions.locations}
-                  renderInput={(params) => (
-                    <TextField {...params} label="📍 Locations" size="small" variant="outlined" />
-                  )}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => (
-                      <Chip
-                        label={option}
-                        size="small"
-                        {...getTagProps({ index })}
-                        sx={{
-                          backgroundColor: '#DBEAFE',
-                          color: '#1E40AF',
-                          fontWeight: 500,
-                          borderRadius: '16px'
-                        }}
-                      />
-                    ))
-                  }
+                  label={FILTER_CONFIG.location.label}
+                  emoji={FILTER_CONFIG.location.emoji}
+                  chipColor={FILTER_CONFIG.location.colors}
                   disabled={isLoading}
                 />
 
-                <Autocomplete
-                  multiple
+                <FilterAutocomplete
                   value={selectedIndustries}
-                  onChange={(_, newValue) => setSelectedIndustries(newValue)}
+                  onChange={setSelectedIndustries}
                   options={filterOptions.industries}
-                  renderInput={(params) => (
-                    <TextField {...params} label="🏢 Industries" size="small" variant="outlined" />
-                  )}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => (
-                      <Chip
-                        label={option}
-                        size="small"
-                        {...getTagProps({ index })}
-                        sx={{
-                          backgroundColor: '#E8EAFF',
-                          color: '#4F46E5',
-                          fontWeight: 500,
-                          borderRadius: '16px'
-                        }}
-                      />
-                    ))
-                  }
+                  label={FILTER_CONFIG.industries.label}
+                  emoji={FILTER_CONFIG.industries.emoji}
+                  chipColor={FILTER_CONFIG.industries.colors}
                   disabled={isLoading}
                 />
 
-                <Autocomplete
-                  multiple
+                <FilterAutocomplete
                   value={selectedTargetMarkets}
-                  onChange={(_, newValue) => setSelectedTargetMarkets(newValue)}
+                  onChange={setSelectedTargetMarkets}
                   options={filterOptions.target_markets}
-                  renderInput={(params) => (
-                    <TextField {...params} label="🎯 Target Markets" size="small" variant="outlined" />
-                  )}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => (
-                      <Chip
-                        label={option}
-                        size="small"
-                        {...getTagProps({ index })}
-                        sx={{
-                          backgroundColor: '#DCFCE7',
-                          color: '#15803D',
-                          fontWeight: 500,
-                          borderRadius: '16px'
-                        }}
-                      />
-                    ))
-                  }
+                  label={FILTER_CONFIG.targetMarkets.label}
+                  emoji={FILTER_CONFIG.targetMarkets.emoji}
+                  chipColor={FILTER_CONFIG.targetMarkets.colors}
                   disabled={isLoading}
                 />
 
-                <Autocomplete
-                  multiple
+                <FilterAutocomplete
                   value={selectedStages}
-                  onChange={(_, newValue) => setSelectedStages(newValue)}
+                  onChange={setSelectedStages}
                   options={filterOptions.stages}
-                  renderInput={(params) => (
-                    <TextField {...params} label="🚀 Funding Stage" size="small" variant="outlined" />
-                  )}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => (
-                      <Chip
-                        label={option}
-                        size="small"
-                        {...getTagProps({ index })}
-                        sx={{
-                          backgroundColor: '#FEF3C7',
-                          color: '#92400E',
-                          fontWeight: 500,
-                          borderRadius: '16px'
-                        }}
-                      />
-                    ))
-                  }
+                  label={FILTER_CONFIG.stages.label}
+                  emoji={FILTER_CONFIG.stages.emoji}
+                  chipColor={FILTER_CONFIG.stages.colors}
+                  disabled={isLoading}
+                />
+
+                <FilterAutocomplete
+                  value={selectedBusinessModels}
+                  onChange={setSelectedBusinessModels}
+                  options={filterOptions.business_models}
+                  label={FILTER_CONFIG.businessModels.label}
+                  emoji={FILTER_CONFIG.businessModels.emoji}
+                  chipColor={FILTER_CONFIG.businessModels.colors}
+                  disabled={isLoading}
+                />
+
+                <FilterAutocomplete
+                  value={selectedRevenueModels}
+                  onChange={setSelectedRevenueModels}
+                  options={filterOptions.revenue_models}
+                  label={FILTER_CONFIG.revenueModels.label}
+                  emoji={FILTER_CONFIG.revenueModels.emoji}
+                  chipColor={FILTER_CONFIG.revenueModels.colors}
                   disabled={isLoading}
                 />
               </div>
 
               {/* Numeric Filters with Min/Max Inputs */}
               <div className="space-y-4 pt-4 border-t border-gray-200">
-                {/* Employee Count */}
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg">👥</span>
-                    <Typography variant="body2" className="text-gray-800 font-semibold">
-                      Employee Count
-                    </Typography>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <TextField
-                      type="number"
-                      size="small"
-                      label="Min"
-                      placeholder="e.g. 50"
-                      value={minEmployees ?? ''}
-                      onChange={(e) => setMinEmployees(e.target.value ? Number(e.target.value) : null)}
-                      disabled={isLoading}
-                      InputProps={{
-                        inputProps: { min: 0 }
-                      }}
-                      sx={{
-                        backgroundColor: 'white',
-                        '& .MuiOutlinedInput-root': {
-                          '&:hover fieldset': {
-                            borderColor: '#6366F1',
-                          },
-                          '&.Mui-focused fieldset': {
-                            borderColor: '#6366F1',
-                          }
-                        }
-                      }}
-                    />
-                    <TextField
-                      type="number"
-                      size="small"
-                      label="Max"
-                      placeholder="e.g. 500"
-                      value={maxEmployees ?? ''}
-                      onChange={(e) => setMaxEmployees(e.target.value ? Number(e.target.value) : null)}
-                      disabled={isLoading}
-                      InputProps={{
-                        inputProps: { min: 0 }
-                      }}
-                      sx={{
-                        backgroundColor: 'white',
-                        '& .MuiOutlinedInput-root': {
-                          '&:hover fieldset': {
-                            borderColor: '#6366F1',
-                          },
-                          '&.Mui-focused fieldset': {
-                            borderColor: '#6366F1',
-                          }
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
+                <NumericRangeFilter
+                  min={minEmployees}
+                  max={maxEmployees}
+                  onMinChange={setMinEmployees}
+                  onMaxChange={setMaxEmployees}
+                  {...NUMERIC_FILTER_CONFIG.employee}
+                  disabled={isLoading}
+                />
 
-                {/* Funding Amount */}
-                <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-4 border border-emerald-100">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg">💰</span>
-                    <Typography variant="body2" className="text-gray-800 font-semibold">
-                      Funding Amount (USD)
-                    </Typography>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <TextField
-                      type="number"
-                      size="small"
-                      label="Min ($)"
-                      placeholder="e.g. 1000000"
-                      value={minFunding ?? ''}
-                      onChange={(e) => setMinFunding(e.target.value ? Number(e.target.value) : null)}
-                      disabled={isLoading}
-                      InputProps={{
-                        inputProps: { min: 0 }
-                      }}
-                      sx={{
-                        backgroundColor: 'white',
-                        '& .MuiOutlinedInput-root': {
-                          '&:hover fieldset': {
-                            borderColor: '#10B981',
-                          },
-                          '&.Mui-focused fieldset': {
-                            borderColor: '#10B981',
-                          }
-                        }
-                      }}
-                    />
-                    <TextField
-                      type="number"
-                      size="small"
-                      label="Max ($)"
-                      placeholder="e.g. 10000000"
-                      value={maxFunding ?? ''}
-                      onChange={(e) => setMaxFunding(e.target.value ? Number(e.target.value) : null)}
-                      disabled={isLoading}
-                      InputProps={{
-                        inputProps: { min: 0 }
-                      }}
-                      sx={{
-                        backgroundColor: 'white',
-                        '& .MuiOutlinedInput-root': {
-                          '&:hover fieldset': {
-                            borderColor: '#10B981',
-                          },
-                          '&.Mui-focused fieldset': {
-                            borderColor: '#10B981',
-                          }
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
+                <NumericRangeFilter
+                  min={minFunding}
+                  max={maxFunding}
+                  onMinChange={setMinFunding}
+                  onMaxChange={setMaxFunding}
+                  {...NUMERIC_FILTER_CONFIG.funding}
+                  disabled={isLoading}
+                />
               </div>
             </div>
           </div>
@@ -658,84 +568,7 @@ function App() {
                   </h2>
                 </div>
                 {companies.map((company) => (
-                  <div
-                    key={company.id}
-                    className="p-8 rounded-3xl bg-white shadow-lg border border-gray-100 hover:shadow-xl transition-all hover:scale-[1.01]"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
-                        {company.company_name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                          {company.company_name}
-                        </h3>
-                        {company.explanation && (
-                          <div className="mb-3 p-3 rounded-xl bg-blue-50 border border-blue-100">
-                            <p className="text-sm font-semibold text-blue-900 mb-1">✨ Why this company?</p>
-                            <p className="text-sm text-blue-800 leading-relaxed">
-                              {company.explanation}
-                            </p>
-                          </div>
-                        )}
-                        {company.description && (
-                          <p className="text-gray-600 mb-4 text-base leading-relaxed">
-                            {company.description}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-2.5 items-center">
-                          {company.industries && company.industries.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5">
-                              {company.industries.map((industry, idx) => (
-                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 text-purple-800 text-xs font-medium border border-purple-200">
-                                  🏢 {industry}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {company.target_markets && company.target_markets.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5">
-                              {company.target_markets.map((market, idx) => (
-                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-50 text-teal-800 text-xs font-medium border border-teal-200">
-                                  🎯 {market}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {company.stage && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-800 text-sm font-semibold border border-yellow-200">
-                              🚀 {company.stage}
-                            </span>
-                          )}
-                          {company.funding_amount && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-800 text-sm font-semibold border border-green-200">
-                              💰 ${(company.funding_amount / 1000000).toFixed(1)}M
-                            </span>
-                          )}
-                          {company.employee_count && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-800 text-sm font-semibold border border-indigo-200">
-                              👥 {company.employee_count} employees
-                            </span>
-                          )}
-                          {(company.location || company.city) && (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">
-                              📍 {company.location || company.city}
-                            </span>
-                          )}
-                          {company.website_url && (
-                            <a
-                              href={company.website_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors border border-gray-200"
-                            >
-                              🔗 Website
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <CompanyCard key={company.id} company={company} />
                 ))}
               </div>
             )}
