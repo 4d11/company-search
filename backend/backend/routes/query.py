@@ -109,7 +109,7 @@ async def submit_query(request: QueryRequest, db: Session = Depends(get_db)):
         db=db,
         user_filters=request.filters,
         excluded_values=request.excluded_values or [],
-        size=20
+        size=15
     )
 
     # Convert to response format

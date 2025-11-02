@@ -11,7 +11,7 @@ def get_company_index_mapping():
     """
     Load the company index mapping from JSON file and update with settings.
     """
-    mapping_path = Path(__file__).parent / "company_index_mapping.json"
+    mapping_path = Path(__file__).parent / "config/company_index_mapping.json"
     with open(mapping_path, 'r') as f:
         mapping = json.load(f)
 

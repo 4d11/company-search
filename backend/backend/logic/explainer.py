@@ -1,74 +1,8 @@
-"""
-Explainability logic for search results.
-"""
-from typing import Optional, Tuple, List
+"""Explainability logic for search results."""
+from typing import Optional, List
+
 from backend.db.database import Company
-from backend.models.filters import FilterType, LogicType, OperatorType, QueryFilters, SegmentFilter
-
-# Common stop words to filter out from keyword matching
-STOP_WORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "he",
-    "in", "is", "it", "its", "of", "on", "that", "the", "to", "was", "will", "with",
-    "companies", "company", "startup", "startups", "find", "looking", "search", "show"
-}
-
-
-def extract_keywords(text: str, min_length: int = 3) -> List[str]:
-    """
-    Extract meaningful keywords from text by removing stop words and short words.
-
-    Args:
-        text: Text to extract keywords from
-        min_length: Minimum word length to consider
-
-    Returns:
-        List of lowercase keywords
-    """
-    if not text:
-        return []
-
-    # Tokenize and clean
-    words = text.lower().split()
-    keywords = []
-
-    for word in words:
-        # Remove punctuation
-        clean_word = ''.join(c for c in word if c.isalnum())
-        # Keep if it's long enough and not a stop word
-        if len(clean_word) >= min_length and clean_word not in STOP_WORDS:
-            keywords.append(clean_word)
-
-    return keywords
-
-
-def find_keyword_matches(query: str, company: Company) -> List[str]:
-    """
-    Find keywords that appear in both the query and company description/attributes.
-
-    Args:
-        query: User's search query
-        company: Company to match against
-
-    Returns:
-        List of matched keywords
-    """
-    query_keywords = set(extract_keywords(query))
-
-    # Build company text from description, industries, and target markets
-    company_text_parts = []
-    if company.description:
-        company_text_parts.append(company.description)
-    if company.industries:
-        company_text_parts.extend([ind.name for ind in company.industries])
-    if company.target_markets:
-        company_text_parts.extend([tm.name for tm in company.target_markets])
-
-    company_text = " ".join(company_text_parts)
-    company_keywords = set(extract_keywords(company_text))
-
-    # Find matches
-    matches = query_keywords & company_keywords
-    return sorted(list(matches))[:5]  # Limit to 5 most relevant
+from backend.models.filters import FilterType, OperatorType, QueryFilters, SegmentFilter
 
 
 def format_operator(op: OperatorType) -> str:
@@ -226,16 +160,8 @@ def explain_result(
         filters_str = ", ".join(filter_explanations)
         explanations.append(f"Matched filters: {filters_str}")
 
-    # Find and show keyword matches
-    keyword_matches = find_keyword_matches(query, company)
-    if keyword_matches:
-        explanations.append(f"Matches keywords: {', '.join(keyword_matches)}")
-
-
-    # Explain semantic relevance with simple message based on score
-    # Normalize ES score (script_score returns cosine + 1, so range is 0-2)
     normalized_score = (es_score - 1.0) if es_score > 1.0 else es_score
-    normalized_score = max(0.0, min(1.0, normalized_score))  # Clamp to 0-1
+    normalized_score = max(0.0, min(1.0, normalized_score))
     normalized_score_percent = int(normalized_score * 100)
 
     if normalized_score_percent >= 75:

@@ -204,11 +204,6 @@ def seed_database():
                     "Public": (500000000, 5000000000)
                 }
 
-                # Show cache stats if enabled
-                if settings.use_llm_cache:
-                    cache_stats = extraction_cache.stats()
-                    print(f"LLM cache enabled: {cache_stats['cached_entries']} entries cached")
-
                 print("Extracting attributes using LLM...")
                 for idx, row in enumerate(csv_reader, 1):
                     company_name = row.get('Company Name', '')

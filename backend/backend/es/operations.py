@@ -161,14 +161,6 @@ def search_companies_by_vector(
             range_filter["range"]["employee_count"]["lte"] = max_employees
         filters.append(range_filter)
 
-    # Add range filters for stage order (enables comparisons like "Series A or later")
-    if min_stage_order is not None or max_stage_order is not None:
-        range_filter = {"range": {"stage_order": {}}}
-        if min_stage_order is not None:
-            range_filter["range"]["stage_order"]["gte"] = min_stage_order
-        if max_stage_order is not None:
-            range_filter["range"]["stage_order"]["lte"] = max_stage_order
-        filters.append(range_filter)
 
     if min_funding is not None or max_funding is not None:
         range_filter = {"range": {"funding_amount": {}}}

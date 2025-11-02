@@ -12,8 +12,8 @@ from copy import deepcopy
 
 # Load mapping template from config
 def _load_mapping_template():
-    """Load base mapping template from config/segment_mapping_template.json"""
-    template_path = Path(__file__).parent.parent / "config" / "segment_mapping_template.json"
+    """Load base mapping template from es/config/segment_mapping_template.json"""
+    template_path = Path(__file__).parent / "config" / "segment_mapping_template.json"
     with open(template_path, 'r') as f:
         return json.load(f)
 
