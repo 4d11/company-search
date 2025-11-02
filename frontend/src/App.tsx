@@ -1,5 +1,5 @@
 import "./App.css";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import axios from "axios";
 import { FilterAutocomplete } from "./components/FilterAutocomplete";
 import { NumericRangeFilter } from "./components/NumericRangeFilter";
@@ -52,12 +52,18 @@ interface QueryFilters {
   filters: SegmentFilter[];
 }
 
+interface ExcludedFilterValue {
+  segment: string;
+  op: string;
+  value: string | number;
+}
+
 const exampleQueries = [
   "Find Stealth Pre-seed companies",
   "AI B2B SaaS in San Francisco",
-  "Find companies with founders who have a prior exit",
   "security ai startups",
-  "productivity tool SaaS based in New York"
+  "productivity tool SaaS based in New York",
+  "an addition to my seed stage fintech portfolio"
 ];
 
 function App() {
@@ -87,9 +93,13 @@ function App() {
   const [minFunding, setMinFunding] = useState<number | null>(null);
   const [maxFunding, setMaxFunding] = useState<number | null>(null);
 
-  // Applied filters from backend and excluded segments
+  // Applied filters from backend and excluded values
   const [appliedFilters, setAppliedFilters] = useState<QueryFilters | null>(null);
-  const [excludedSegments, setExcludedSegments] = useState<string[]>([]);
+  const [excludedValues, setExcludedValues] = useState<ExcludedFilterValue[]>([]);
+
+  // Track previous input value to detect user typing
+  const prevInputValueRef = useRef<string>("");
+  const isInitialMountRef = useRef(true);
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -108,6 +118,43 @@ function App() {
     // Fetch filter options
     fetchFilterOptions();
   }, [fetchFilterOptions]);
+
+  // Reset filters when query is cleared or replaced (select all + type)
+  useEffect(() => {
+    // Skip on initial mount
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      prevInputValueRef.current = inputValue;
+      return;
+    }
+
+    const prevText = prevInputValueRef.current.trim();
+    const currentText = inputValue.trim();
+
+    // Detect if user cleared the query OR did select-all + type new char
+    // (previous text was substantial and new text is very short)
+    const shouldClearFilters =
+      (currentText === "" && prevText !== "") || // User cleared query
+      (prevText.length > 3 && currentText.length <= 2); // Select all + type (likely replacement)
+
+    if (shouldClearFilters) {
+      // User cleared or replaced the query - clear all filters
+      setSelectedLocations([]);
+      setSelectedIndustries([]);
+      setSelectedTargetMarkets([]);
+      setSelectedStages([]);
+      setSelectedBusinessModels([]);
+      setSelectedRevenueModels([]);
+      setMinEmployees(null);
+      setMaxEmployees(null);
+      setMinFunding(null);
+      setMaxFunding(null);
+      setAppliedFilters(null);
+      setExcludedValues([]);
+    }
+
+    prevInputValueRef.current = inputValue;
+  }, [inputValue]);
 
   const buildFilters = (): QueryFilters | null => {
     const segmentFilters: SegmentFilter[] = [];
@@ -257,8 +304,12 @@ function App() {
           setSelectedRevenueModels(revenueModels);
           break;
         case "employee_count":
-          const empMinRule = segmentFilter.rules.find(r => r.op === "GTE");
-          const empMaxRule = segmentFilter.rules.find(r => r.op === "LTE");
+          const empMinRule = segmentFilter.rules.find(r =>
+            r.op.toUpperCase() === "GTE" || r.op.toUpperCase() === "GT"
+          );
+          const empMaxRule = segmentFilter.rules.find(r =>
+            r.op.toUpperCase() === "LTE" || r.op.toUpperCase() === "LT"
+          );
           if (empMinRule) {
             setMinEmployees(Number(empMinRule.value));
           }
@@ -267,8 +318,12 @@ function App() {
           }
           break;
         case "funding_amount":
-          const fundMinRule = segmentFilter.rules.find(r => r.op === "GTE");
-          const fundMaxRule = segmentFilter.rules.find(r => r.op === "LTE");
+          const fundMinRule = segmentFilter.rules.find(r =>
+            r.op.toUpperCase() === "GTE" || r.op.toUpperCase() === "GT"
+          );
+          const fundMaxRule = segmentFilter.rules.find(r =>
+            r.op.toUpperCase() === "LTE" || r.op.toUpperCase() === "LT"
+          );
           if (fundMinRule) {
             setMinFunding(Number(fundMinRule.value));
           }
@@ -294,7 +349,7 @@ function App() {
       const response = await axios.post(API_ENDPOINTS.SUBMIT_QUERY, {
         query: inputValue,
         filters: filters,
-        excluded_segments: excludedSegments
+        excluded_values: excludedValues
       });
 
       setCompanies(response.data.companies);
@@ -340,50 +395,73 @@ function App() {
     setMinFunding(null);
     setMaxFunding(null);
     setAppliedFilters(null);
-    setExcludedSegments([]);
+    setExcludedValues([]);
   };
 
-  const removeFilter = (segment: string) => {
-    // Add segment to excluded list
-    if (!excludedSegments.includes(segment)) {
-      setExcludedSegments([...excludedSegments, segment]);
-    }
+  const removeFilterValue = (segment: string, op: string, value: string | number) => {
+    // Add to excluded values list
+    const newExcludedValue: ExcludedFilterValue = { segment, op, value };
+    setExcludedValues([...excludedValues, newExcludedValue]);
 
     // Remove from applied filters
     if (appliedFilters) {
+      const updatedFilters = appliedFilters.filters
+        .map(segmentFilter => {
+          if (segmentFilter.segment === segment) {
+            // Remove the specific rule (op, value) from this segment
+            const remainingRules = segmentFilter.rules.filter(
+              rule => !(rule.op === op && String(rule.value) === String(value))
+            );
+            // Only keep segment filter if it has remaining rules
+            if (remainingRules.length > 0) {
+              return { ...segmentFilter, rules: remainingRules };
+            }
+            return null; // Mark for removal
+          }
+          return segmentFilter;
+        })
+        .filter(f => f !== null) as SegmentFilter[];
+
       setAppliedFilters({
         ...appliedFilters,
-        filters: appliedFilters.filters.filter(f => f.segment !== segment)
+        filters: updatedFilters
       });
     }
 
-    // Clear UI state for this segment
+    // Update UI state for this specific value
     switch (segment) {
       case "location":
-        setSelectedLocations([]);
+        setSelectedLocations(prev => prev.filter(loc => loc !== value));
         break;
       case "industries":
-        setSelectedIndustries([]);
+        setSelectedIndustries(prev => prev.filter(ind => ind !== value));
         break;
       case "target_markets":
-        setSelectedTargetMarkets([]);
+        setSelectedTargetMarkets(prev => prev.filter(tm => tm !== value));
         break;
       case "funding_stage":
-        setSelectedStages([]);
+        setSelectedStages(prev => prev.filter(stage => stage !== value));
         break;
       case "business_models":
-        setSelectedBusinessModels([]);
+        setSelectedBusinessModels(prev => prev.filter(bm => bm !== value));
         break;
       case "revenue_models":
-        setSelectedRevenueModels([]);
+        setSelectedRevenueModels(prev => prev.filter(rm => rm !== value));
         break;
       case "employee_count":
-        setMinEmployees(null);
-        setMaxEmployees(null);
+        // For numeric ranges, if user removes a bound, clear that bound
+        if (op === "GTE" || op === "GT") {
+          setMinEmployees(null);
+        } else if (op === "LTE" || op === "LT") {
+          setMaxEmployees(null);
+        }
         break;
       case "funding_amount":
-        setMinFunding(null);
-        setMaxFunding(null);
+        if (op === "GTE" || op === "GT") {
+          setMinFunding(null);
+        } else if (op === "LTE" || op === "LT") {
+          setMaxFunding(null);
+        }
         break;
     }
   };
@@ -454,6 +532,7 @@ function App() {
                 <FilterAutocomplete
                   value={selectedLocations}
                   onChange={setSelectedLocations}
+                  onDeleteChip={(value) => removeFilterValue("location", "EQ", value)}
                   options={filterOptions.locations}
                   label={FILTER_CONFIG.location.label}
                   emoji={FILTER_CONFIG.location.emoji}
@@ -464,6 +543,7 @@ function App() {
                 <FilterAutocomplete
                   value={selectedIndustries}
                   onChange={setSelectedIndustries}
+                  onDeleteChip={(value) => removeFilterValue("industries", "EQ", value)}
                   options={filterOptions.industries}
                   label={FILTER_CONFIG.industries.label}
                   emoji={FILTER_CONFIG.industries.emoji}
@@ -474,6 +554,7 @@ function App() {
                 <FilterAutocomplete
                   value={selectedTargetMarkets}
                   onChange={setSelectedTargetMarkets}
+                  onDeleteChip={(value) => removeFilterValue("target_markets", "EQ", value)}
                   options={filterOptions.target_markets}
                   label={FILTER_CONFIG.targetMarkets.label}
                   emoji={FILTER_CONFIG.targetMarkets.emoji}
@@ -484,6 +565,7 @@ function App() {
                 <FilterAutocomplete
                   value={selectedStages}
                   onChange={setSelectedStages}
+                  onDeleteChip={(value) => removeFilterValue("funding_stage", "EQ", value)}
                   options={filterOptions.stages}
                   label={FILTER_CONFIG.stages.label}
                   emoji={FILTER_CONFIG.stages.emoji}
@@ -494,6 +576,7 @@ function App() {
                 <FilterAutocomplete
                   value={selectedBusinessModels}
                   onChange={setSelectedBusinessModels}
+                  onDeleteChip={(value) => removeFilterValue("business_models", "EQ", value)}
                   options={filterOptions.business_models}
                   label={FILTER_CONFIG.businessModels.label}
                   emoji={FILTER_CONFIG.businessModels.emoji}
@@ -504,6 +587,7 @@ function App() {
                 <FilterAutocomplete
                   value={selectedRevenueModels}
                   onChange={setSelectedRevenueModels}
+                  onDeleteChip={(value) => removeFilterValue("revenue_models", "EQ", value)}
                   options={filterOptions.revenue_models}
                   label={FILTER_CONFIG.revenueModels.label}
                   emoji={FILTER_CONFIG.revenueModels.emoji}
@@ -567,6 +651,8 @@ function App() {
                     I've evaluated companies for you. Here are the {companies.length} that matter.
                   </h2>
                 </div>
+
+                {/* Company Results */}
                 {companies.map((company) => (
                   <CompanyCard key={company.id} company={company} />
                 ))}
