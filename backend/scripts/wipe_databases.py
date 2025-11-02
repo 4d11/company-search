@@ -4,6 +4,7 @@ Quick script to wipe PostgreSQL and Elasticsearch databases.
 This will force re-seeding on next application startup.
 """
 
+import sys
 from backend.settings import settings
 from backend.db.database import engine, Base
 from backend.es.client import es_client
@@ -23,14 +24,15 @@ def wipe_elasticsearch():
     """Delete the Elasticsearch index."""
     print("Wiping Elasticsearch...")
 
-    try:
-        if es_client.indices.exists(index=COMPANY_INDEX_NAME):
-            es_client.indices.delete(index=COMPANY_INDEX_NAME)
-            print(f"✓ Deleted Elasticsearch index: {COMPANY_INDEX_NAME}")
-        else:
-            print(f"  Index '{COMPANY_INDEX_NAME}' doesn't exist, skipping")
-    except Exception as e:
-        print(f"✗ Error deleting Elasticsearch index: {e}")
+    for index in es_client.indices.get_alias():
+        try:
+            if es_client.indices.exists(index=index):
+                es_client.indices.delete(index=index)
+                print(f"✓ Deleted Elasticsearch index: {index}")
+            else:
+                print(f"  Index '{index}' doesn't exist, skipping")
+        except Exception as e:
+            print(f"✗ Error deleting Elasticsearch index: {e}")
 
 if __name__ == "__main__":
     print("=" * 60)
@@ -40,7 +42,13 @@ if __name__ == "__main__":
     print(f"Elasticsearch: {settings.elasticsearch_url}")
     print("=" * 60)
 
-    response = input("Are you sure you want to wipe all databases? (yes/no): ")
+    # Check for --yes flag
+    skip_confirmation = "--yes" in sys.argv or "-y" in sys.argv
+
+    if skip_confirmation:
+        response = "yes"
+    else:
+        response = input("Are you sure you want to wipe all databases? (yes/no): ")
 
     if response.lower() == "yes":
         wipe_postgres()
