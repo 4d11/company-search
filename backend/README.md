@@ -20,6 +20,8 @@ AI-powered company search backend with semantic vector search and LLM-based quer
 
 ## Setup
 
+### Manual Setup
+
 1. Make sure you are in the backend directory:
 
    ```bash
@@ -27,9 +29,16 @@ AI-powered company search backend with semantic vector search and LLM-based quer
    # Should show: .../backend
    ```
 
-2. Ensure you have Python 3.9+ installed (this repo was created with 3.9.16)
+2. Create environment file:
 
-3. Install dependencies:
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your LLM_API_KEY
+   ```
+
+3. Ensure you have Python 3.9+ installed (this repo was created with 3.9.16)
+
+4. Install dependencies:
 
    ```bash
    poetry install
@@ -37,21 +46,36 @@ AI-powered company search backend with semantic vector search and LLM-based quer
 
    ([Install Poetry](https://python-poetry.org/docs/#installation) if you don't have it yet)
 
-4. Start the backend and database:
+5. Start Docker services:
 
    ```bash
-   docker compose up
+   docker compose up -d
    ```
 
-5. View the API documentation at http://localhost:8000/docs
+6. Seed the database:
 
-6. (Optional for VS Code users) Select your Python Interpreter (CMD+P) to use the Poetry-created environment:
-   - Find environments: `poetry env list`
-   - Get active environment: `poetry env info`
+   ```bash
+   poetry run python scripts/seed.py
+   ```
+
+7. Start the FastAPI server:
+
+   ```bash
+   poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+8. View the API documentation at http://localhost:8000/docs
+
 
 ## Database Seeding
 
-The database will automatically be seeded on first startup (see `main.py`) with data from `backend/db/B2B_SaaS_2021-2022.csv`.
+The seeding script (`scripts/seed.py`) loads:
+- ~500 companies from `backend/db/B2B_SaaS_2021-2022.csv`
+- Reference data from `backend/db/seed_data.json` (industries, locations, target markets)
+- Uses LLM to extract attributes (industries, business models, etc.) from company descriptions
+- Indexes all data into Elasticsearch for vector search
+
+**First-run detection**: The FastAPI server checks if the database is empty on startup and displays a warning if seeding is needed.
 
 ## Reset Docker Container
 

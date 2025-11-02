@@ -25,29 +25,43 @@ This application combines semantic search with LLM-powered query understanding t
 - Interactive filter management
 - Real-time search results with explanations
 
-## Quick Start
-
+## Quick Start for Reviewers
 ### Prerequisites
 - Docker & Docker Compose
-- Python 3.9+ with Poetry (backend)
-- Node.js 18+ with Yarn (frontend)
+- Python 3.9+ with Poetry ([install](https://python-poetry.org/docs/#installation))
+- Node.js 18+ with Yarn
+- OpenAI API key (or compatible)
 
-### Backend Setup
-```bash
-cd backend
-poetry install
-docker compose up
-poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+### 1. Backend Setup (Automated)
+1. `cd backend`
+
+2. Update the env vars for the api key in docker-compose.yaml
+In my case, I used
 ```
+LLM_API_KEY=???
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=openai/gpt-4o-mini
+```
+3. `docker-compose up`
+4. Navigate to http://localhost:8000
 
-### Frontend Setup
+**IMPORTANT NOTE: It will take up to 5 minutes for the backend to seed 
+with all the data so please give it some time! I have cached the extractions 
+for the companies so your API_KEY will only be used on the query side**
+
+### 2. Frontend Setup
 ```bash
 cd frontend
 yarn install
 yarn dev
 ```
 
-Access the application at `http://localhost:5173`
+Application: http://localhost:5173
+
+### Example Queries to Try
+- **Basic**: "fintech startups in San Francisco"
+- **Conceptual**: "API-first vertical SaaS for regulated industries"
+- **Portfolio**: "My portfolio has consumer fintech. Suggest complementary B2B investments."
 
 ## Testing
 
