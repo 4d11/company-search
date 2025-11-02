@@ -1,12 +1,15 @@
 """
 Portfolio analysis for generating complementary investment recommendations.
 """
+import logging
 from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
 from backend.llm.client import get_llm_client
+
+logger = logging.getLogger(__name__)
 
 
 # Load prompt template
@@ -56,16 +59,16 @@ def analyze_portfolio_for_complementary_thesis(query: str) -> Optional[Portfolio
             user_message=user_message
         )
 
-        print(f"Portfolio Analysis:")
-        print(f"  Summary: {analysis.portfolio_summary}")
-        print(f"  Themes: {', '.join(analysis.themes)}")
-        print(f"  Gaps: {', '.join(analysis.gaps)}")
-        print(f"  Complementary Areas: {', '.join(analysis.complementary_areas)}")
-        print(f"  Expanded Query: {analysis.expanded_query}")
-        print(f"  Strategic Reasoning: {analysis.strategic_reasoning}")
+        logger.info(f"Portfolio Analysis:")
+        logger.info(f"  Summary: {analysis.portfolio_summary}")
+        logger.info(f"  Themes: {', '.join(analysis.themes)}")
+        logger.info(f"  Gaps: {', '.join(analysis.gaps)}")
+        logger.info(f"  Complementary Areas: {', '.join(analysis.complementary_areas)}")
+        logger.info(f"  Expanded Query: {analysis.expanded_query}")
+        logger.info(f"  Strategic Reasoning: {analysis.strategic_reasoning}")
 
         return analysis
 
     except Exception as e:
-        print(f"Error analyzing portfolio: {e}")
+        logger.error(f"Error analyzing portfolio: {e}")
         return None

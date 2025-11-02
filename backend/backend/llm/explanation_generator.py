@@ -1,11 +1,14 @@
 """LLM-based explanation generator for search results."""
 from typing import List, Dict, Optional
 import json
+import logging
 from pathlib import Path
 
 from backend.db.database import Company
 from backend.llm.client import get_llm_client
 from backend.llm.explanation_cache import get_explanation_cache
+
+logger = logging.getLogger(__name__)
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 EXPLANATION_PROMPT = (PROMPTS_DIR / "explanation_generation.txt").read_text()
@@ -95,7 +98,7 @@ def batch_generate_explanations(
         return {**cached_explanations, **new_explanations}
 
     except Exception as e:
-        print(f"Error generating explanations: {e}")
+        logger.error(f"Error generating explanations: {e}")
         return cached_explanations
 
 

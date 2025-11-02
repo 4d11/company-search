@@ -1,7 +1,10 @@
+import logging
 from sentence_transformers import SentenceTransformer
 from typing import List
 
 from backend.settings import settings
+
+logger = logging.getLogger(__name__)
 
 _model = None
 
@@ -118,9 +121,9 @@ def generate_composite_embeddings_batch(
 
     # Batch encode both (much faster than individual encodes)
     model = get_embedding_model()
-    print(f"Generating embeddings for {len(descriptions)} descriptions...")
+    logger.info(f"Generating embeddings for {len(descriptions)} descriptions...")
     desc_embeddings = model.encode(descriptions, convert_to_tensor=False, show_progress_bar=True)
-    print(f"Generating embeddings for {len(websites)} website texts...")
+    logger.info(f"Generating embeddings for {len(websites)} website texts...")
     web_embeddings = model.encode(websites, convert_to_tensor=False, show_progress_bar=True)
 
     # Weighted average for each company

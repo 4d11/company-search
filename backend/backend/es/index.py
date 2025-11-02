@@ -1,8 +1,11 @@
 import json
+import logging
 from pathlib import Path
 from elasticsearch import Elasticsearch
 
 from backend.settings import settings
+
+logger = logging.getLogger(__name__)
 
 COMPANY_INDEX_NAME = "companies"
 
@@ -29,12 +32,12 @@ def create_company_index(es: Elasticsearch, index_name: str = COMPANY_INDEX_NAME
     # Delete index if it exists
     if es.indices.exists(index=index_name):
         es.indices.delete(index=index_name)
-        print(f"Deleted existing index: {index_name}")
+        logger.info(f"Deleted existing index: {index_name}")
 
     # Create new index with mapping
     mapping = get_company_index_mapping()
     es.indices.create(index=index_name, body=mapping)
-    print(f"Created index: {index_name}")
+    logger.info(f"Created index: {index_name}")
 
 
 def index_exists(es: Elasticsearch, index_name: str = COMPANY_INDEX_NAME) -> bool:
