@@ -175,6 +175,24 @@ function App() {
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    const target = e.currentTarget;
+    const pastedText = e.clipboardData.getData('text');
+
+    const selectionStart = target.selectionStart || 0;
+    const selectionEnd = target.selectionEnd || 0;
+    const currentText = target.value;
+
+    const isCompleteOverwrite =
+      (selectionStart === 0 && selectionEnd === currentText.length) ||
+      currentText.trim() === '' ||
+      pastedText.length > 10;
+
+    if (isCompleteOverwrite && filters.hasActiveFilters) {
+      filters.clearAllFilters();
+    }
+  };
+
   const saveCurrentSearch = useCallback(() => {
     if (!saveSearchName.trim()) return;
 
@@ -264,6 +282,7 @@ function App() {
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
                   disabled={isLoading}
                   className="w-full h-12 px-5 pr-28 rounded-full border-2 border-gray-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                   placeholder={placeholder}
@@ -362,6 +381,7 @@ function App() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 disabled={isLoading}
                 className="w-full h-24 px-6 py-4 pr-24 rounded-3xl border-2 border-gray-200 bg-white text-gray-800 text-lg placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 placeholder={placeholder}
