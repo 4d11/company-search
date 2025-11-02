@@ -1,11 +1,16 @@
-# Backend Setup
+# Backend
 
-This backend uses:
+AI-powered company search backend with semantic vector search and LLM-based query understanding.
+
+## Tech Stack
 
 - **FastAPI** - Modern Python web framework
-- **PostgreSQL** - Database
+- **PostgreSQL** - Primary data store (source of truth)
+- **Elasticsearch** - Vector search engine with kNN
 - **SQLAlchemy** - ORM
-- **Pydantic** - Data validation
+- **Pydantic** - Data validation and settings
+- **sentence-transformers** - Generate embeddings for semantic search
+- **OpenAI-compatible LLM client** - Query classification, filter extraction, explanations
 
 ## Resources
 
@@ -93,3 +98,43 @@ To modify schemas or add new tables:
 
 1. Edit the models in `backend/db/database.py`
 2. Restart the server (or perform a hard reset to re-seed the data)
+
+## API Endpoints
+
+Full API documentation can be found here: http://localhost:8000/docs
+
+## Testing
+
+Run all tests:
+```bash
+poetry run pytest
+```
+
+Run specific test file:
+```bash
+poetry run pytest tests/routes/test_query.py -v
+```
+
+Run with coverage:
+```bash
+poetry run pytest --cov=backend --cov-report=html
+```
+
+Test files are organized by module:
+- `tests/routes/` - API endpoint tests
+- `tests/logic/` - Business logic tests
+- `tests/llm/` - LLM client and extraction tests
+- `tests/es/` - Elasticsearch operations tests
+
+## Troubleshooting
+
+### Database seeding fails
+```bash
+# Reset database completely
+./scripts/reset_db.sh
+```
+
+### LLM API errors
+Check your `.env` file:
+- Ensure `LLM_API_KEY` is set correctly
+- Ensure `LLM_BASE_URL` is set correctly
