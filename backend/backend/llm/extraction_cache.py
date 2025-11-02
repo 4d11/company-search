@@ -1,6 +1,9 @@
 """
 SQLite-based cache for LLM extraction results.
 Used exclusively for LOCAL development to speed up seeding.
+
+IMPORTANT: Caches RAW LLM responses (before database validation).
+This allows validation logic to be re-applied when database changes.
 """
 import hashlib
 import json
@@ -12,7 +15,12 @@ from backend.settings import settings
 
 
 class ExtractionCache:
-    """Cache for LLM extraction results using SQLite."""
+    """
+    Cache for RAW LLM extraction results using SQLite.
+
+    Stores the direct LLM output (Pydantic model) BEFORE database validation.
+    When retrieving from cache, validation logic is re-applied.
+    """
 
     def __init__(self, db_path: Optional[str] = None):
         """
@@ -43,6 +51,8 @@ class ExtractionCache:
                     location TEXT,
                     industries TEXT,
                     target_markets TEXT,
+                    business_models TEXT,
+                    revenue_models TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -85,7 +95,9 @@ class ExtractionCache:
         website_text: Optional[str]
     ) -> Optional[Dict[str, any]]:
         """
-        Retrieve cached extraction result if it exists.
+        Retrieve cached RAW LLM extraction result if it exists.
+
+        Caller must re-apply validation logic.
 
         Args:
             company_name: Name of the company
@@ -93,7 +105,7 @@ class ExtractionCache:
             website_text: Optional website text
 
         Returns:
-            Cached extraction result or None if not found
+            Raw LLM extraction result or None if not found
         """
         cache_key = self._generate_cache_key(company_name, description, website_text)
 
@@ -101,18 +113,20 @@ class ExtractionCache:
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT location, industries, target_markets
+                SELECT location, industries, target_markets, business_models, revenue_models
                 FROM extraction_cache
                 WHERE cache_key = ?
             """, (cache_key,))
 
             row = cursor.fetchone()
             if row:
-                location, industries_json, target_markets_json = row
+                location, industries_json, target_markets_json, business_models_json, revenue_models_json = row
                 return {
                     "location": location,
-                    "industries": json.loads(industries_json),
-                    "target_markets": json.loads(target_markets_json)
+                    "industries": json.loads(industries_json) if industries_json else [],
+                    "target_markets": json.loads(target_markets_json) if target_markets_json else [],
+                    "business_models": json.loads(business_models_json) if business_models_json else [],
+                    "revenue_models": json.loads(revenue_models_json) if revenue_models_json else [],
                 }
             return None
         finally:
@@ -123,16 +137,16 @@ class ExtractionCache:
         company_name: str,
         description: str,
         website_text: Optional[str],
-        extraction_result: Dict[str, any]
+        raw_llm_result: Dict[str, any]
     ):
         """
-        Store extraction result in cache.
+        Store RAW LLM extraction result in cache
 
         Args:
             company_name: Name of the company
             description: Company description
             website_text: Optional website text
-            extraction_result: The extraction result to cache
+            raw_llm_result: The RAW LLM extraction result to cache (Pydantic model as dict)
         """
         cache_key = self._generate_cache_key(company_name, description, website_text)
 
@@ -141,16 +155,18 @@ class ExtractionCache:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO extraction_cache
-                (cache_key, company_name, description, website_text, location, industries, target_markets)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (cache_key, company_name, description, website_text, location, industries, target_markets, business_models, revenue_models)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 cache_key,
                 company_name,
                 description,
                 website_text,
-                extraction_result["location"],
-                json.dumps(extraction_result["industries"]),
-                json.dumps(extraction_result["target_markets"])
+                raw_llm_result.get("location"),
+                json.dumps(raw_llm_result.get("industries", [])),
+                json.dumps(raw_llm_result.get("target_markets", [])),
+                json.dumps(raw_llm_result.get("business_models", [])),
+                json.dumps(raw_llm_result.get("revenue_models", [])),
             ))
             conn.commit()
         finally:
@@ -166,17 +182,4 @@ class ExtractionCache:
         finally:
             conn.close()
 
-    def stats(self) -> Dict[str, int]:
-        """Get cache statistics."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM extraction_cache")
-            count = cursor.fetchone()[0]
-            return {"cached_entries": count}
-        finally:
-            conn.close()
-
-
-# Global cache instance
 extraction_cache = ExtractionCache()

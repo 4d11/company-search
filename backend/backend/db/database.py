@@ -3,11 +3,13 @@ from datetime import datetime
 from typing import Union
 
 from sqlalchemy import (
+    ARRAY,
     BigInteger,
     Column,
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Table,
     Text,
@@ -55,6 +57,7 @@ class Industry(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True)
+    synonyms = Column(ARRAY(String), nullable=True)  # Array of synonym strings for fuzzy matching
 
 
 class TargetMarket(Base):
@@ -62,6 +65,22 @@ class TargetMarket(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False, index=True)
+
+
+class BusinessModel(Base):
+    __tablename__ = "business_models"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    synonyms = Column(ARRAY(String), nullable=True)  # Array of synonym strings for fuzzy matching
+
+
+class RevenueModel(Base):
+    __tablename__ = "revenue_models"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    synonyms = Column(ARRAY(String), nullable=True)  # Array of synonym strings for fuzzy matching
 
 
 class FundingStage(Base):
@@ -87,6 +106,24 @@ company_target_markets = Table(
     Base.metadata,
     Column('company_id', Integer, ForeignKey('companies.id'), primary_key=True),
     Column('target_market_id', Integer, ForeignKey('target_markets.id'), primary_key=True)
+)
+
+
+# Association table for Company-BusinessModel many-to-many relationship
+company_business_models = Table(
+    'company_business_models',
+    Base.metadata,
+    Column('company_id', Integer, ForeignKey('companies.id'), primary_key=True),
+    Column('business_model_id', Integer, ForeignKey('business_models.id'), primary_key=True)
+)
+
+
+# Association table for Company-RevenueModel many-to-many relationship
+company_revenue_models = Table(
+    'company_revenue_models',
+    Base.metadata,
+    Column('company_id', Integer, ForeignKey('companies.id'), primary_key=True),
+    Column('revenue_model_id', Integer, ForeignKey('revenue_models.id'), primary_key=True)
 )
 
 
@@ -117,3 +154,30 @@ class Company(Base):
     funding_stage = relationship("FundingStage")
     industries = relationship("Industry", secondary=company_industries, backref="companies")
     target_markets = relationship("TargetMarket", secondary=company_target_markets, backref="companies")
+    business_models = relationship("BusinessModel", secondary=company_business_models, backref="companies")
+    revenue_models = relationship("RevenueModel", secondary=company_revenue_models, backref="companies")
+
+
+class SearchLog(Base):
+    """Log all search queries for analytics"""
+    __tablename__ = "search_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    query = Column(Text, nullable=True)  # Natural language query (can be empty if filters-only)
+    filters_applied = Column(JSON, nullable=True)  # JSON of filters used
+    result_count = Column(Integer, nullable=False, default=0)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class LLMExtraction(Base):
+    """Track LLM-discovered values that don't match existing database entries"""
+    __tablename__ = "llm_extractions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    raw_value = Column(String, nullable=False, index=True)  # e.g., "AI/ML", "PropTech"
+    segment = Column(String, nullable=False, index=True)  # "industries", "target_markets", etc.
+    matched_to = Column(String, nullable=True)  # Matched DB value if mapped
+    count = Column(Integer, default=1, nullable=False)  # Frequency count
+    first_seen = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_seen = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    status = Column(String, default="pending", nullable=False, index=True)  # pending/approved/mapped/ignored

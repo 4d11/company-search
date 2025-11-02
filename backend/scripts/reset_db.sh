@@ -25,7 +25,7 @@ python -m scripts.wipe_databases $YES_FLAG
 # Run seed script
 echo ""
 echo "Step 2: Seeding databases..."
-python seed.py
+python -m scripts.seed
 
 echo ""
 echo "=========================================="

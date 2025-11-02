@@ -25,15 +25,14 @@ class Settings(BaseSettings):
     embedding_model_name: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
 
-    # LLM settings (uses OpenAI SDK - works for OpenAI, Anthropic, etc.)
     llm_model: str = "claude-3-5-haiku-20241022"
     llm_api_key: Optional[str] = None
-    llm_base_url: Optional[str] = None  # e.g., "https://api.anthropic.com/v1" for Anthropic
+    llm_base_url: Optional[str] = None
 
-    # LLM extraction cache settings (for LOCAL development only)
     use_llm_cache: bool = True
     llm_cache_db_path: str = str(Path(__file__).parent.parent / ".llm_cache.db")
 
+    log_level: str = "INFO"
 
-# Global settings instance
+
 settings = Settings()

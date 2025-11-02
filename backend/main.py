@@ -1,11 +1,9 @@
-# app/main.py
-
 from fastapi import FastAPI
 from fastapi.concurrency import asynccontextmanager
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.db import database
-from backend.routes import query
+from backend.routes import admin, query
 
 
 @asynccontextmanager
@@ -29,6 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
 app.include_router(query.router, prefix="/api", tags=["query"])
+app.include_router(admin.router)
 

@@ -31,14 +31,17 @@
       "target_markets": {
         "type": "keyword"
       },
+      "business_models": {
+        "type": "keyword"
+      },
+      "revenue_models": {
+        "type": "keyword"
+      },
       "employee_count": {
         "type": "integer"
       },
-      "stage": {
+      "funding_stage": {
         "type": "keyword"
-      },
-      "stage_order": {
-        "type": "integer"
       },
       "funding_amount": {
         "type": "integer"

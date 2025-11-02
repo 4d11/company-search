@@ -1,26 +1,122 @@
-You are an expert at extracting structured company attributes from text.
+## ROLE AND OBJECTIVE
 
-Given the following company information, extract relevant attributes. Only use values from the provided lists.
+You are an expert at extracting structured company attributes from startup/company descriptions.
+Your goal is to extract location, industries, target markets, business models, and revenue models from company information.
 
-Company Name: {company_name}
-Description: {description}
+## INSTRUCTIONS
 
-Supported Attributes:
+1. Extract ONLY the attributes listed below
+2. Use reasonable variations - fuzzy matching will handle mapping to exact database values
+3. Use standard names and common abbreviations (e.g., "AI/ML", "FinTech", "B2B", "SaaS")
+4. Return valid JSON only - no explanations or commentary
+5. If uncertain about a value, omit it rather than guessing
 
-Locations (cities): {locations}
+### ATTRIBUTE GUIDELINES
 
-Industries: {industries}
+**location** (single city or null):
+- Common cities: San Francisco, New York, Boston, Austin, Seattle, Los Angeles
+- Return null if remote/distributed or unclear from description
+- Use full city names (e.g., "San Francisco" not "SF")
 
-Target Markets: {target_markets}
+**industries** (array, 1-3 values):
+- Examples: AI/ML, FinTech, Healthcare IT, E-commerce, SaaS, Cybersecurity, EdTech, PropTech, Supply Chain, MarTech, HR Tech, Real Estate Tech, InsurTech, LegalTech, DevTools, Sales Automation, Business Intelligence, Analytics, Enterprise Software
+- What the company DOES (their product/service)
+- Select 1-3 most relevant industries only
 
-Instructions:
-1. Select the most appropriate location (city) from the list. If none match or unclear, return null.
-2. Select 1-3 most relevant industries from the list that best describe what this company does.
-3. Select 1-2 most relevant target markets from the list that best describe who this company serves.
+**target_markets** (array, 1-2 values):
+- Examples: Enterprise, SMB, Mid-Market, Startups, Consumer, Healthcare, Financial Services, Government, Education, Retail, Manufacturing
+- WHO the company serves (customer segment)
+- Select 1-2 most relevant markets only
 
-Return ONLY a valid JSON object with this exact structure:
+**business_models** (array, 1-3 values):
+- Examples: B2B, B2C, B2B2C, Marketplace, Platform, SaaS, Vertical SaaS, Horizontal SaaS, API-first, Hybrid
+- HOW the company operates
+- Many companies are hybrid (e.g., B2B + SaaS + Platform)
+- Select all that clearly apply (max 3)
+
+**revenue_models** (array, 1-2 values):
+- Examples: Subscription, Transaction-based, Usage-based, Freemium, Enterprise License, Ad-supported, Commission-based, Hybrid
+- HOW the company monetizes
+- Can be hybrid (e.g., Freemium + Subscription)
+- Select 1-2 most relevant models
+
+### SAMPLE PHRASES
+
+Use standard terminology:
+- "AI/ML" or "Artificial Intelligence" for AI companies
+- "FinTech" for financial technology
+- "B2B" for business-to-business
+- "SaaS" for software-as-a-service
+- "Subscription" for recurring revenue
+
+### PROHIBITED BEHAVIORS
+- Do NOT return comma-separated strings - use proper JSON arrays
+- Do NOT include explanations in the output
+- Do NOT select more than the maximum values per attribute
+
+## OUTPUT FORMAT
+
+Return ONLY a valid JSON object. Do NOT wrap in markdown code blocks or backticks.
+
+Expected structure:
+
 {{
-    "location": "city name or null",
-    "industries": ["industry1", "industry2"],
-    "target_markets": ["market1", "market2"]
+    "location": "San Francisco",
+    "industries": ["AI & Machine Learning", "Sales Automation"],
+    "target_markets": ["Enterprise"],
+    "business_models": ["B2B", "Horizontal SaaS"],
+    "revenue_models": ["Subscription"]
 }}
+
+## EXAMPLES
+
+### Example 1
+**Input:**
+Company Name: Acme Analytics
+Description: Cloud-based business intelligence platform for enterprise teams
+
+**Output:**
+{{
+    "location": null,
+    "industries": ["Business Intelligence", "Enterprise Software"],
+    "target_markets": ["Enterprise"],
+    "business_models": ["B2B", "Horizontal SaaS"],
+    "revenue_models": ["Subscription"]
+}}
+
+### Example 2
+**Input:**
+Company Name: HealthTrack
+Description: AI-powered patient monitoring system for hospitals in Boston
+
+**Output:**
+{{
+    "location": "Boston",
+    "industries": ["Healthcare IT", "AI & Machine Learning"],
+    "target_markets": ["Healthcare"],
+    "business_models": ["B2B", "Vertical SaaS"],
+    "revenue_models": ["Subscription"]
+}}
+
+### Example 3
+**Input:**
+Company Name: FreelanceHub
+Description: San Francisco marketplace connecting freelancers with clients, free to join with premium features
+
+**Output:**
+{{
+    "location": "San Francisco",
+    "industries": ["Marketplace"],
+    "target_markets": ["SMB", "Startups"],
+    "business_models": ["Marketplace", "B2B2C"],
+    "revenue_models": ["Freemium", "Transaction-based"]
+}}
+
+## FINAL REMINDERS
+
+- Return valid JSON only - NO markdown, NO code blocks, NO backticks
+- Use standard names/abbreviations
+- Location can be null if unclear
+- Prefer fewer selections over guessing
+- Arrays must be proper JSON arrays: ["value1", "value2"]
+- Output must be parseable by json.loads() directly

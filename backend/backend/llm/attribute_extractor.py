@@ -1,48 +1,88 @@
 """
 Attribute extraction service that uses LLM to extract structured company attributes.
-Dynamically pulls supported attributes from the database schema.
 """
-import json
+import functools
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from sqlalchemy.orm import Session
 
-from backend.db.database import FundingStage, Industry, Location, TargetMarket
+from backend.db.database import Industry, Location, TargetMarket, BusinessModel, RevenueModel
 from backend.llm.client import get_llm_client
 from backend.llm.extraction_cache import extraction_cache
+from backend.llm.schemas import AttributeExtractionResponse
+from backend.logging_config import get_logger
 from backend.settings import settings
 
-# Load prompt template
-PROMPTS_DIR = Path(__file__).parent / "prompts"
-with open(PROMPTS_DIR / "attribute_extraction.txt", "r") as f:
-    ATTRIBUTE_EXTRACTION_PROMPT = f.read()
+logger = get_logger(__name__)
+
+@functools.lru_cache
+def _load_attribute_extraction_prompt():
+    PROMPTS_DIR = Path(__file__).parent / "prompts"
+    with open(PROMPTS_DIR / "attribute_extraction.txt", "r") as f:
+        attribute_extraction_prompt = f.read()
+    return attribute_extraction_prompt
+
+# Empty result structure for errors
+EMPTY_ATTRIBUTES = {
+    "location": None,
+    "industries": [],
+    "target_markets": [],
+    "business_models": [],
+    "revenue_models": [],
+}
 
 
-def get_supported_attributes(db: Session) -> Dict[str, List[str]]:
+def get_supported_attributes(db: Session) -> Dict[str, Set[str]]:
     """
-    Fetch supported attribute values from the database.
+    Fetch supported attribute values from the database for validation.
 
     Args:
         db: Database session
 
     Returns:
-        Dictionary mapping attribute names to their possible values
+        Dictionary mapping attribute names to sets of valid values (for fast lookup)
     """
-    locations = [loc.city for loc in db.query(Location).all()]
-    industries = [ind.name for ind in db.query(Industry).all()]
-    target_markets = [tm.name for tm in db.query(TargetMarket).all()]
-    funding_stages = [
-        {"name": stage.name, "order": stage.order_index}
-        for stage in db.query(FundingStage).order_by(FundingStage.order_index).all()
-    ]
-
     return {
-        "locations": locations,
-        "industries": industries,
-        "target_markets": target_markets,
-        "funding_stages": funding_stages,
+        "locations": {loc.city for loc in db.query(Location).all()},
+        "industries": {ind.name for ind in db.query(Industry).all()},
+        "target_markets": {tm.name for tm in db.query(TargetMarket).all()},
+        "business_models": {bm.name for bm in db.query(BusinessModel).all()},
+        "revenue_models": {rm.name for rm in db.query(RevenueModel).all()},
     }
+
+
+def _validate_attributes(
+    raw_llm_response: Dict[str, any],
+    supported: Dict[str, Set[str]]
+) -> Dict[str, any]:
+    """
+    Validate raw LLM response against database values.
+
+    Args:
+        raw_llm_response: Raw LLM extraction result (before validation)
+        supported: Dictionary of supported values from database (as sets)
+
+    Returns:
+        Validated extraction result with only database-valid values
+    """
+    # Validate location (single value)
+    location = raw_llm_response.get("location")
+    if location and location not in supported["locations"]:
+        logger.warning(f"Location '{location}' not in database, setting to null")
+        location = None
+
+    validated = {"location": location}
+    for attr_name in supported:
+        if attr_name == "location":
+            continue
+        raw_values = raw_llm_response.get(attr_name, [])
+        validated[attr_name] = [
+            val for val in raw_values
+            if val in supported[attr_name]
+        ]
+
+    return validated
 
 
 def extract_company_attributes(
@@ -53,90 +93,53 @@ def extract_company_attributes(
 ) -> Dict[str, any]:
     """
     Extract structured attributes from company information using LLM.
-    Only extracts: location, industries, and target_markets.
-    Employee count, funding stage, and funding amount should be set separately.
 
-    Uses SQLite cache for LOCAL development to speed up repeated seeding.
+    Extracts: location, industries, target_markets, business_models, revenue_models.
+    Note: Employee count, funding stage, and funding amount should be set separately.
+
+    Uses SQLite cache for local development to avoid redundant LLM calls.
+    Cache stores raw LLM responses; validation is re-applied on retrieval.
 
     Args:
         company_name: Name of the company
         description: Company description
-        website_text: Optional website text content
+        website_text: Optional website text (currently unused but kept for cache key)
         db: Database session
 
     Returns:
-        Dictionary containing extracted attributes:
-        {
-            "location": str or None,
-            "industries": List[str],
-            "target_markets": List[str]
-        }
+        Dictionary with validated attributes (only values that exist in database)
     """
-    # Check cache first (only in local development)
-    if settings.use_llm_cache:
-        cached = extraction_cache.get(company_name, description, website_text)
-        if cached:
-            print(f"    ✓ Using cached extraction for {company_name}")
-            return cached
-    return {}
-
-    # Get supported attributes from database
     supported = get_supported_attributes(db)
 
-    # Build the prompt from template
-    prompt = ATTRIBUTE_EXTRACTION_PROMPT.format(
-        company_name=company_name,
-        description=description,
-        locations=', '.join(supported['locations']),
-        industries=', '.join(supported['industries']),
-        target_markets=', '.join(supported['target_markets'])
-    )
+    if settings.use_llm_cache:
+        cached_raw = extraction_cache.get(company_name, description, website_text)
+        if cached_raw:
+            logger.debug(f"Using cached extraction for {company_name}")
+            return _validate_attributes(cached_raw, supported)
 
-    # Get LLM response
+    user_message = f"""Company Name: {company_name}
+Description: {description}
+"""
+
     try:
         llm_client = get_llm_client()
-        response = llm_client.generate(prompt=prompt)
+        response = llm_client.generate(
+            system_message=_load_attribute_extraction_prompt(),
+            user_message=user_message,
+            response_model=AttributeExtractionResponse
+        )
 
-        # Validate and clean the response
-        validated = {
-            "location": response.get("location"),
-            "industries": response.get("industries", [])[:3],  # Max 3
-            "target_markets": response.get("target_markets", [])[:2],  # Max 2
-        }
+        raw_llm_result = response.model_dump()
 
-        # Validate location
-        if validated["location"] and validated["location"] not in supported["locations"]:
-            validated["location"] = None
-
-        # Validate industries
-        validated["industries"] = [
-            ind for ind in validated["industries"]
-            if ind in supported["industries"]
-        ]
-
-        # Validate target markets
-        validated["target_markets"] = [
-            tm for tm in validated["target_markets"]
-            if tm in supported["target_markets"]
-        ]
-
-        # Cache the result (only in local development)
         if settings.use_llm_cache:
-            extraction_cache.set(company_name, description, website_text, validated)
+            extraction_cache.set(company_name, description, website_text, raw_llm_result)
 
-        return validated
+        return _validate_attributes(raw_llm_result, supported)
 
     except Exception as e:
-        print(f"Error extracting attributes for {company_name}: {e}")
-        # Return empty/null attributes on error
-        error_result = {
-            "location": None,
-            "industries": [],
-            "target_markets": [],
-        }
+        logger.exception(f"Error extracting attributes for {company_name}: {e}")
 
-        # Cache error results too to avoid retrying failed extractions
         if settings.use_llm_cache:
-            extraction_cache.set(company_name, description, website_text, error_result)
+            extraction_cache.set(company_name, description, website_text, EMPTY_ATTRIBUTES)
 
-        return error_result
+        return EMPTY_ATTRIBUTES.copy()

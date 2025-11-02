@@ -7,6 +7,13 @@ from typing import List, Union
 from pydantic import BaseModel, field_validator, model_validator
 
 
+class ExcludedFilterValue(BaseModel):
+    """A filter value to exclude from extraction (segment, op, value tuple)."""
+    segment: str
+    op: str
+    value: Union[str, int]
+
+
 class FilterType(str, Enum):
     """Type of filter value."""
     TEXT = "text"
@@ -31,7 +38,7 @@ class LogicType(str, Enum):
 
 # Valid segments
 TEXT_SEGMENTS = {"location", "industries", "target_markets", "funding_stage", "business_models", "revenue_models"}
-NUMERIC_SEGMENTS = {"employee_count", "funding_amount", "stage_order"}
+NUMERIC_SEGMENTS = {"employee_count", "funding_amount"}
 ALL_SEGMENTS = TEXT_SEGMENTS | NUMERIC_SEGMENTS
 
 # Operators allowed per type

@@ -1,34 +1,111 @@
 """
 LLM client using OpenAI SDK.
-Works for OpenAI, Anthropic, and other OpenAI-compatible APIs.
 """
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Type, TypeVar
+from openai import OpenAI
 
+from pydantic import BaseModel, ValidationError
+
+from backend.logging_config import get_logger
 from backend.settings import settings
+
+logger = get_logger(__name__)
+
+T = TypeVar('T', bound=BaseModel)
+
 
 
 class LLMClient:
     """LLM client using OpenAI SDK."""
 
     def __init__(self, api_key: str, model: str, base_url: str = None):
-        from openai import OpenAI
+
         if base_url:
             self.client = OpenAI(api_key=api_key, base_url=base_url)
         else:
             self.client = OpenAI(api_key=api_key)
         self.model = model
 
-    def generate(self, prompt: str, response_format: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Generate structured JSON output using OpenAI SDK."""
+
+    def _clean_claude_json_output(self, content):
+        """
+        Strip Markdown code fences if present (Claude sometimes adds these despite instructions)
+
+        :param content: the output from the model
+        :return:
+        """
+
+        content = content.strip()
+        if content.startswith("```"):
+            lines = content.split('\n')
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            content = '\n'.join(lines).strip()
+        return content
+
+
+
+    def generate(
+        self,
+        response_model: Type[T],
+        system_message: str,
+        user_message: str,
+    ) -> T:
+        """
+        Generate structured output using OpenAI SDK with Pydantic validation.
+
+        Args:
+            response_model: Pydantic model for validation (required)
+            system_message: System instructions/role
+            user_message: User input/request
+
+        Returns:
+            Validated Pydantic model instance
+        """
+        data = self.generate_raw(system_message=system_message, user_message=user_message)
+
+        try:
+            return response_model(**data)
+        except ValidationError as e:
+            logger.error(f"Pydantic validation error: {e}")
+            raise
+
+    def generate_raw(
+        self,
+        system_message: str,
+        user_message: str,
+    ) -> Dict[str, Any]:
+        """
+        Generate raw JSON output without Pydantic validation.
+
+        Use this when you need to manipulate the raw dict before validation
+        (e.g., fixing common LLM mistakes).
+
+        Args:
+            system_message: System instructions/role
+            user_message: User input/request
+
+        Returns:
+            Raw dict from LLM response
+        """
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ]
+
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             temperature=0.1,
             response_format={"type": "json_object"}
         )
 
         content = response.choices[0].message.content
+        content = self._clean_claude_json_output(content)
+
         return json.loads(content)
 
 
@@ -38,11 +115,6 @@ _llm_client = None
 def get_llm_client() -> LLMClient:
     """
     Get the LLM client singleton.
-
-    Uses OpenAI SDK which works for:
-    - OpenAI (no base_url needed)
-    - Anthropic (set base_url to "https://api.anthropic.com/v1")
-    - Other OpenAI-compatible APIs
 
     Returns:
         LLMClient instance

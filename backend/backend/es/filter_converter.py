@@ -36,7 +36,6 @@ def convert_segment_filter(segment_filter: SegmentFilter) -> dict:
                 clauses.append({"bool": {"must_not": {"term": {segment: value}}}})
 
         elif filter_type == FilterType.NUMERIC:
-            # Numeric segment filters
             if op == OperatorType.EQ:
                 clauses.append({"term": {segment: value}})
             elif op == OperatorType.NEQ:
@@ -52,7 +51,7 @@ def convert_segment_filter(segment_filter: SegmentFilter) -> dict:
 
     # Combine clauses based on logic
     if not clauses:
-        return None
+        return {}
 
     if len(clauses) == 1:
         return clauses[0]
@@ -60,17 +59,17 @@ def convert_segment_filter(segment_filter: SegmentFilter) -> dict:
     # Multiple clauses: combine with logic operator
     if logic == LogicType.AND:
         return {"bool": {"must": clauses}}
-    else:  # OR
+    else:
         return {"bool": {"should": clauses, "minimum_should_match": 1}}
 
 
-def filters_to_es_query(filters: QueryFilters, query_vector: List[float]) -> dict:
+def filters_to_es_query(filters: QueryFilters, query_vector: List[float] = None) -> dict:
     """
-    Convert QueryFilters to complete Elasticsearch query with vector search.
+    Convert QueryFilters to complete Elasticsearch query with optional vector search.
 
     Args:
         filters: The filters to convert
-        query_vector: The query embedding vector for semantic search
+        query_vector: Optional query embedding vector for semantic search. If None, returns pure filter query.
 
     Returns:
         Complete Elasticsearch query body
@@ -82,20 +81,23 @@ def filters_to_es_query(filters: QueryFilters, query_vector: List[float]) -> dic
         if clause:
             filter_clauses.append(clause)
 
-    # Build query based on whether we have filters
+    # Build query based on whether we have filters and vector
     if not filter_clauses:
-        # No filters: use pure kNN search
-        return {
-            "knn": {
-                "field": "description_vector",
-                "query_vector": query_vector,
-                "k": 10,
-                "num_candidates": 100,
+        # No filters
+        if query_vector is not None:
+            # Use pure kNN search
+            return {
+                "knn": {
+                    "field": "description_vector",
+                    "query_vector": query_vector,
+                    "k": 10,
+                    "num_candidates": 100,
+                }
             }
-        }
+        else:
+            return {"query": {"match_all": {}}}
 
-    # With filters: use script_score with filters
-    # Combine filter clauses based on top-level logic
+    # With filters: combine filter clauses based on top-level logic
     if len(filter_clauses) == 1:
         filter_query = filter_clauses[0]
     elif filters.logic == LogicType.AND:
@@ -103,15 +105,18 @@ def filters_to_es_query(filters: QueryFilters, query_vector: List[float]) -> dic
     else:  # OR
         filter_query = {"bool": {"should": filter_clauses, "minimum_should_match": 1}}
 
-    # Build script_score query
-    return {
-        "query": {
-            "script_score": {
-                "query": filter_query,
-                "script": {
-                    "source": "cosineSimilarity(params.query_vector, 'description_vector') + 1.0",
-                    "params": {"query_vector": query_vector},
-                },
+    # If vector provided, use script_score; otherwise return pure filter query
+    if query_vector is not None:
+        return {
+            "query": {
+                "script_score": {
+                    "query": filter_query,
+                    "script": {
+                        "source": "cosineSimilarity(params.query_vector, 'description_vector') + 1.0",
+                        "params": {"query_vector": query_vector},
+                    },
+                }
             }
         }
-    }
+    else:
+        return {"query": filter_query}
