@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     embedding_model_name: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
 
-    llm_model: str = "claude-3-5-haiku-20241022"
+    llm_model: str = "gpt-4o-mini"
     llm_api_key: Optional[str] = None
     llm_base_url: Optional[str] = None
 
