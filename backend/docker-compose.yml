@@ -26,35 +26,35 @@ services:
     ports:
       - "9200:9200"
 
-#  ai-jam-web-api:
-#    build: .
-#    volumes:
-#      - .:/app
-#    ports:
-#      - 8000:8000
-#      - 5678:5678
-#    command:
-#      [
-#        "python",
-#        "-m",
-#        "debugpy",
-#        "--listen",
-#        "0.0.0.0:5678",
-#        "-m",
-#        "uvicorn",
-#        "main:app",
-#        "--host",
-#        "0.0.0.0",
-#        "--port",
-#        "8000",
-#        "--reload",
-#      ]
-#    depends_on:
-#      - ai-jam-postgres-db
-#      - ai-jam-elasticsearch
-#    environment:
-#      DATABASE_URL: postgresql://postgres:postgres@ai-jam-postgres-db:5432/harmonicjam
-#      ELASTICSEARCH_URL: http://ai-jam-elasticsearch:9200
+  ai-jam-web-api:
+    build: .
+    volumes:
+      - .:/app
+    ports:
+      - 8000:8000
+      - 5678:5678
+    command:
+      [
+        "python",
+        "-m",
+        "debugpy",
+        "--listen",
+        "0.0.0.0:5678",
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
+    depends_on:
+      - ai-jam-postgres-db
+      - ai-jam-elasticsearch
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@ai-jam-postgres-db:5432/harmonicjam
+      ELASTICSEARCH_URL: http://ai-jam-elasticsearch:9200
 
 volumes:
   ai-jam-postgres-data:
