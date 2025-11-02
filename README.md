@@ -32,20 +32,19 @@ This application combines semantic search with LLM-powered query understanding t
 - Node.js 18+ with Yarn
 - OpenAI API key (or compatible)
 
-### 1. Backend Setup (Automated)
+### 1. Backend Setup 
 1. `cd backend`
-
-2. Update the env vars for the api key in docker-compose.yaml
-In my case, I used
+2. Copy the .env example file `cp .env.example .env`
+3. Specify a value for these 3 configs. I used the values below
 ```
 LLM_API_KEY=???
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODEL=openai/gpt-4o-mini
 ```
-3. `docker-compose up`
-4. Navigate to http://localhost:8000
+4. Run `docker-compose up`
+5. Navigate to http://localhost:8000
 
-**IMPORTANT NOTE: It will take up to 5 minutes for the backend to seed 
+**IMPORTANT NOTE: It may take up to 5 minutes for the backend to seed 
 with all the data so please give it some time! I have cached the extractions 
 for the companies so your API_KEY will only be used on the query side**
 

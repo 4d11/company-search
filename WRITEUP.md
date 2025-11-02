@@ -38,10 +38,6 @@ I have selected these as they have good coverage to handle high order intent que
 to complimentary investments.
 
 ## Engineering Design
-
-
-
-
 To handle this "filter focused" approach, I need to be able to map a high level query eg.
 "Fintech SaaS in New York or San Francisco" to discrete filters (Industry->Fintech, Business Model->SaaS, Location->New York OR San Francisco)
 
@@ -50,7 +46,7 @@ on their website and description to the query.
 
 For these kind of hybrid search use cases, I have decided to use ElasticSearch as my primary search database
 as from my experience, it excels in these scenarios. I will continue to use Postgres as the main source of truth, 
-FastAPI for the backend and React for the frontend as I have good experience with them.
+FastAPI for the backend and React for the frontend as I have a good amount of experience with them. 
 
 ### Consideration: Postgres - Keep or Not to Keep?
 I debated whether to still keep around Postgres as we aren't actively using it but I decided to keep it for the following 
@@ -62,10 +58,10 @@ reasons.
 ### Filter First Approach
 I debated whether to use this approach or a more flexible text match or LLM powered approach. I decided to go ahead with
 Filter First for the following reasons 
-1. Precision matters most: VC would rather see 10 perfect matches than 100 maybes
-2. Time is precious: Fast exact filters + small vector search = <500ms response
-3. Explainability required: Investment decisions need justification
-4. Structured data is gold: I'm anticipating that it should be easier to pull accurate data for some metrics like Location, employee count etc.
+1. Precision matters most: Our VC would see fewer perfect matches over multiple noisy matches
+2. Speed: Fast exact filters + small vector search can give us very fast responses
+3. Straightforward explainability
+4. Structured data feasibility: I'm anticipating that it should be easier to pull accurate data for some metrics like Location, employee count etc.
 
 ### Pipeline
 ```mermaid
@@ -94,7 +90,7 @@ This agent takes in a company's information and returns a prediction of which su
 eg. "Superblocks is the only internal app generation platform powering mission critical operations at global enterprises like Instacart, Credit Karma, and Carrier" -> Industry: Enterprise Software, AI & Machine Learning, Target Markets: Enterprise 
 
 #### Query Extraction Agent
-This agent takes in a user's query and returns a prediction of which supported attribute values it has
+This agent takes in a user's query and returns a prediction of which supported attribute values it has.
 
 I was initially passing the agents a list of all supported values to use; however, I chose to transition
 away from this approach as the set of possible values can grow very large and will lead to increased processing costs and time.
@@ -105,9 +101,22 @@ eg ["HealthTech", "Healthcare Technology", "Health IT", "Digital Health"] should
 To achieve this, I created indices in Elastic Search for all supported attributes and used that to power
 the matching. I tried a few test cases and arrived on an approach through trial and error
 
+#### Query Classification Agent
+This agent determines is a user's query is an "explicit_search" or "portfolio_analysis". In the case of the latter,
+the Query Rewrite Agent is used to pre-process the query before results are fetched.
+
+#### Query Rewriter Agent
+This agent is used for more complex queries. It updates the query to remove meta-text and focus on search intent.
+
+#### Query Explainer Agent
+One benefit of using the filter first approach with semantic filter is that results are very straightforward to explain.
+However, given the level of detail that we would like our VC to have and the fact that we would like to prioritize
+quality over speed and cost; I have decided to use an Agent for the explanations as well even though it is significantly
+slower and costlier
+
 #### Attributes Query DSL
-To handle complex queries such as "include companies where the location is in (NY AND SF) AND industry is ("FINTECH") and employee_count is "> 100"
-I created a DSL that all agents will use that can easily be mapped into an ES query
+To handle complex queries such as "include companies where the location is in (NY AND SF) AND industry is ("FINTECH") 
+and employee_count is "> 100", I created a DSL that all agents will use that can easily be mapped into an ES query
 ```
 {{
     "logic": "AND",        ← TOP-LEVEL logic: combines all filters below
@@ -135,31 +144,41 @@ I created a DSL that all agents will use that can easily be mapped into an ES qu
 ``` 
 
 
-#### Query Explainer
-One benefit of using the filter first approach with semantic filter is that results are very straightforward to explain.
-However, given the level of detail that we would like our VC to have and the fact that we would like to prioritize
-quality over speed and cost; I have decided to use an Agent for the explanations as well even though it is significantly
-slower and costlier
-
 #### UI/UX Considerations
-I have done the following to have a better use case for our VC 
-- If the user is updating an existing query, we will keep the exisiting filters applied. Otherwise the filters are removed This is done by detecting if the existing query has been removed entirely (by checking if it has been 
-copy pasted over or cleared entirely).
-- If the user removes a filter, we continue to filter it out even if our agent predicts that it should be applied
+I have made the following decisions based on our VC's profile: 
+- If the user is updating an existing query, we will keep the existing filters applied. Otherwise the filters are 
+cleared. This is done by detecting whether the user is working on the original query or has started working on an entirely new one
+- If the user removes a filter, we continue to exclude it from results even if our agent predicts that it should be applied
 - The VC is able to save searches they built and restore them for future use.
 
 
-## Bonus Features
-One question I had is what if there is an attribute out there that our system isn't aware of.
-To handle this case, I have added a feature where all such attributes are logged to a table.
+## Drawbacks 
+Once issue with the filter first approach is say we come across an attribute that isn't part of our 
+knowledge base? To handle this case, I have added a feature where all such attributes are logged to a table.
 An admin user is then able to add it as a value or as a synonym. Check it out in the /admin view!!
 
+
 ## Models Used
-For vector generation, I have used BGE-M3 since it is a local model and can give good results.
+For vector generation, I have used all-MiniLM-L6-v2 as it was fast, local and gave good results 
+For the agents, I chose to use `openai/gpt-4o-mini` given its low cost and speed
 
 
 ## Additional things I would have liked to do
-1. I chose my models and cutoffs based on brief trial and error and some test cases. Given more time,
-I would like to be able to try different approaches and evaluate based on their precision and recall
-2. Complex query builder on the frontend. The ability for our VC to build more complex queries involving nested ands and ors would be useful for doing deep dives into results
-3. Better cache support. I have some basic caching for query explanations but I would like to have added a multi-level cache to decrease the time it takes to get results
+1. I chose my models and score cutoffs based on quick trial and error and a few test cases. Given more time,
+I would like to be able to try different approaches and evaluate based on their precision and recall.
+2. Complex query builder on the frontend. The ability for our VC to build more complex queries involving nested ands and ors could be extremely powerful when working on complex thesis
+3. Improved cache usage. I have basic caching that handle the case where the exact query is repeated but I believe 
+having a more generalized cache would greatly decrease the time it takes to fetch results.
+4. Integrate with pyright, flake8, black and isort to ensure adherence to Python best practices.
+
+### 2. Backend Setup (Automated)
+1. `cd backend`
+2. Copy the .env example file `cp .env.example .env`
+3. Specify a value for these 3. I used the values below
+```
+LLM_API_KEY=???
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=openai/gpt-4o-mini
+```
+4. Run `docker-compose up`
+5. Navigate to http://localhost:8000
