@@ -38,6 +38,10 @@ I have selected these as they have good coverage to handle high order intent que
 to complimentary investments.
 
 ## Engineering Design
+
+
+
+
 To handle this "filter focused" approach, I need to be able to map a high level query eg.
 "Fintech SaaS in New York or San Francisco" to discrete filters (Industry->Fintech, Business Model->SaaS, Location->New York OR San Francisco)
 
@@ -64,7 +68,26 @@ Filter First for the following reasons
 4. Structured data is gold: I'm anticipating that it should be easier to pull accurate data for some metrics like Location, employee count etc.
 
 ### Pipeline
- I have multiple agents
+```mermaid
+graph TD
+    A[User enters natural language query] --> B[Query Extraction Agent<br/>LLM extracts raw attributes]
+    B --> C[Fuzzy Matcher<br/>Elasticsearch segment indices]
+    C --> D{Match found?}
+    D -->|Yes| E[Normalize to canonical value]
+    D -->|No| F[Log to unknown_attributes table]
+    F --> G[Continue without this filter]
+    E --> H[Build Query DSL<br/>filters + logic operators]
+    G --> H
+    H --> I[Elasticsearch Hybrid Search<br/>1. Apply exact term filters<br/>2. Semantic similarity on description]
+    I --> J[Ranked Results]
+    J --> K[Query Explainer Agent<br/>LLM generates explanation]
+    K --> L[Return to user with:<br/>- Companies<br/>- Applied filters<br/>- Explanation]
+
+    style B fill:#e1f5ff
+    style C fill:#fff4e1
+    style I fill:#e1ffe1
+    style K fill:#e1f5ff
+```
 
 #### Attribute Extraction Agent
 This agent takes in a company's information and returns a prediction of which supported attribute values it has
