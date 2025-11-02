@@ -9,18 +9,24 @@ function AppWithRoutes() {
   return (
     <BrowserRouter>
       <div>
-        {/* Simple navigation */}
         <nav style={{
-          padding: '1rem',
-          background: '#f5f5f5',
-          borderBottom: '1px solid #ddd',
-          marginBottom: '1rem'
+          padding: '1rem 2rem',
+          background: '#ffffff',
+          borderBottom: '1px solid #e5e7eb',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
         }}>
-          <Link to="/" style={{ marginRight: '1rem', textDecoration: 'none', color: '#1976d2', fontWeight: 500 }}>
+          <Link to="/" style={{ textDecoration: 'none', color: '#1976d2', fontWeight: 500 }}>
             Search
           </Link>
-          <Link to="/admin" style={{ textDecoration: 'none', color: '#1976d2', fontWeight: 500 }}>
-            Admin Dashboard
+          <Link to="/admin" style={{
+            textDecoration: 'none',
+            color: '#9ca3af',
+            fontSize: '0.875rem',
+            fontWeight: 400,
+          }}>
+            Admin
           </Link>
         </nav>
 

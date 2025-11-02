@@ -1,69 +1,25 @@
 import "./App.css";
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
-import { FilterAutocomplete } from "./components/FilterAutocomplete";
-import { NumericRangeFilter } from "./components/NumericRangeFilter";
-import { CompanyCard } from "./components/CompanyCard";
-import { API_ENDPOINTS, FILTER_CONFIG, NUMERIC_FILTER_CONFIG } from "./constants/filters";
-
-interface Company {
-  id: number;
-  company_name: string;
-  company_id: number | null;
-  city: string | null;
-  description: string | null;
-  website_url: string | null;
-  employee_count: number | null;
-  stage: string | null;
-  funding_amount: number | null;
-  location: string | null;
-  industries: string[];
-  target_markets: string[];
-  explanation: string | null;
-}
-
-interface FilterOptions {
-  locations: string[];
-  industries: string[];
-  target_markets: string[];
-  stages: string[];
-  business_models: string[];
-  revenue_models: string[];
-}
-
-type OperatorType = "EQ" | "NEQ" | "GT" | "GTE" | "LT" | "LTE";
-type FilterType = "text" | "numeric";
-type LogicType = "AND" | "OR";
-
-interface FilterRule {
-  op: OperatorType;
-  value: string | number;
-}
-
-interface SegmentFilter {
-  segment: string;
-  type: FilterType;
-  logic: LogicType;
-  rules: FilterRule[];
-}
-
-interface QueryFilters {
-  logic: LogicType;
-  filters: SegmentFilter[];
-}
-
-interface ExcludedFilterValue {
-  segment: string;
-  op: string;
-  value: string | number;
-}
+import {
+  CompanyCard,
+  CompanyListSkeleton,
+  EmptyState,
+  FilterPanel,
+  FilterPills,
+  SavedSearchesModal,
+  SaveSearchDialog,
+} from "./components";
+import { API_ENDPOINTS } from "./constants/filters";
+import { useFilters } from "./hooks/useFilters";
+import { Company, FilterOptions, SavedSearch } from "./types";
 
 const exampleQueries = [
   "Find Stealth Pre-seed companies",
   "AI B2B SaaS in San Francisco",
   "security ai startups",
   "productivity tool SaaS based in New York",
-  "an addition to my seed stage fintech portfolio"
+  "an addition to my seed stage fintech portfolio",
 ];
 
 function App() {
@@ -72,34 +28,36 @@ function App() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [placeholder, setPlaceholder] = useState("");
-
-  // Filter states
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     locations: [],
     industries: [],
     target_markets: [],
     stages: [],
     business_models: [],
-    revenue_models: []
+    revenue_models: [],
   });
-  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
-  const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
-  const [selectedTargetMarkets, setSelectedTargetMarkets] = useState<string[]>([]);
-  const [selectedStages, setSelectedStages] = useState<string[]>([]);
-  const [selectedBusinessModels, setSelectedBusinessModels] = useState<string[]>([]);
-  const [selectedRevenueModels, setSelectedRevenueModels] = useState<string[]>([]);
-  const [minEmployees, setMinEmployees] = useState<number | null>(null);
-  const [maxEmployees, setMaxEmployees] = useState<number | null>(null);
-  const [minFunding, setMinFunding] = useState<number | null>(null);
-  const [maxFunding, setMaxFunding] = useState<number | null>(null);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(() => {
+    const saved = localStorage.getItem("savedSearches");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to load saved searches:", e);
+        return [];
+      }
+    }
+    return [];
+  });
+  const [showSavedSearches, setShowSavedSearches] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState("");
+  const [hasPerformedSearch, setHasPerformedSearch] = useState(false);
 
-  // Applied filters from backend and excluded values
-  const [appliedFilters, setAppliedFilters] = useState<QueryFilters | null>(null);
-  const [excludedValues, setExcludedValues] = useState<ExcludedFilterValue[]>([]);
-
-  // Track previous input value to detect user typing
+  const filters = useFilters();
   const prevInputValueRef = useRef<string>("");
   const isInitialMountRef = useRef(true);
+  const isLoadingSavedSearchRef = useRef(false);
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -111,256 +69,97 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Randomly select a placeholder on component mount
     const randomQuery = exampleQueries[Math.floor(Math.random() * exampleQueries.length)];
     setPlaceholder(`e.g. ${randomQuery}`);
-
-    // Fetch filter options
     fetchFilterOptions();
   }, [fetchFilterOptions]);
 
-  // Reset filters when query is cleared or replaced (select all + type)
   useEffect(() => {
-    // Skip on initial mount
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
       prevInputValueRef.current = inputValue;
       return;
     }
 
+    if (isLoadingSavedSearchRef.current) {
+      prevInputValueRef.current = inputValue;
+      return;
+    }
+
     const prevText = prevInputValueRef.current.trim();
     const currentText = inputValue.trim();
-
-    // Detect if user cleared the query OR did select-all + type new char
-    // (previous text was substantial and new text is very short)
     const shouldClearFilters =
-      (currentText === "" && prevText !== "") || // User cleared query
-      (prevText.length > 3 && currentText.length <= 2); // Select all + type (likely replacement)
+      (currentText === "" && prevText !== "") || (prevText.length > 3 && currentText.length <= 2);
 
     if (shouldClearFilters) {
-      // User cleared or replaced the query - clear all filters
-      setSelectedLocations([]);
-      setSelectedIndustries([]);
-      setSelectedTargetMarkets([]);
-      setSelectedStages([]);
-      setSelectedBusinessModels([]);
-      setSelectedRevenueModels([]);
-      setMinEmployees(null);
-      setMaxEmployees(null);
-      setMinFunding(null);
-      setMaxFunding(null);
-      setAppliedFilters(null);
-      setExcludedValues([]);
+      filters.clearAllFilters();
     }
 
     prevInputValueRef.current = inputValue;
-  }, [inputValue]);
+  }, [inputValue, filters]);
 
-  const buildFilters = (): QueryFilters | null => {
-    const segmentFilters: SegmentFilter[] = [];
+  useEffect(() => {
+    localStorage.setItem("savedSearches", JSON.stringify(savedSearches));
+  }, [savedSearches]);
 
-    // Location filter (text, EQ with OR logic for multiple)
-    if (selectedLocations.length > 0) {
-      segmentFilters.push({
-        segment: "location",
-        type: "text",
-        logic: "OR",
-        rules: selectedLocations.map(loc => ({ op: "EQ", value: loc }))
-      });
-    }
-
-    // Industries filter (text, EQ with OR logic for multiple)
-    if (selectedIndustries.length > 0) {
-      segmentFilters.push({
-        segment: "industries",
-        type: "text",
-        logic: "OR",
-        rules: selectedIndustries.map(ind => ({ op: "EQ", value: ind }))
-      });
-    }
-
-    // Target Markets filter (text, EQ with OR logic for multiple)
-    if (selectedTargetMarkets.length > 0) {
-      segmentFilters.push({
-        segment: "target_markets",
-        type: "text",
-        logic: "OR",
-        rules: selectedTargetMarkets.map(tm => ({ op: "EQ", value: tm }))
-      });
-    }
-
-    // Funding Stage filter (text, EQ with OR logic for multiple)
-    if (selectedStages.length > 0) {
-      segmentFilters.push({
-        segment: "funding_stage",
-        type: "text",
-        logic: "OR",
-        rules: selectedStages.map(stage => ({ op: "EQ", value: stage }))
-      });
-    }
-
-    // Business Models filter (text, EQ with OR logic for multiple)
-    if (selectedBusinessModels.length > 0) {
-      segmentFilters.push({
-        segment: "business_models",
-        type: "text",
-        logic: "OR",
-        rules: selectedBusinessModels.map(model => ({ op: "EQ", value: model }))
-      });
-    }
-
-    // Revenue Models filter (text, EQ with OR logic for multiple)
-    if (selectedRevenueModels.length > 0) {
-      segmentFilters.push({
-        segment: "revenue_models",
-        type: "text",
-        logic: "OR",
-        rules: selectedRevenueModels.map(model => ({ op: "EQ", value: model }))
-      });
-    }
-
-    // Employee count filter (numeric, GTE/LTE)
-    if (minEmployees !== null || maxEmployees !== null) {
-      const employeeRules: FilterRule[] = [];
-      if (minEmployees !== null) {
-        employeeRules.push({ op: "GTE", value: minEmployees });
-      }
-      if (maxEmployees !== null) {
-        employeeRules.push({ op: "LTE", value: maxEmployees });
-      }
-      segmentFilters.push({
-        segment: "employee_count",
-        type: "numeric",
-        logic: "AND",
-        rules: employeeRules
-      });
-    }
-
-    // Funding amount filter (numeric, GTE/LTE)
-    if (minFunding !== null || maxFunding !== null) {
-      const fundingRules: FilterRule[] = [];
-      if (minFunding !== null) {
-        fundingRules.push({ op: "GTE", value: minFunding });
-      }
-      if (maxFunding !== null) {
-        fundingRules.push({ op: "LTE", value: maxFunding });
-      }
-      segmentFilters.push({
-        segment: "funding_amount",
-        type: "numeric",
-        logic: "AND",
-        rules: fundingRules
-      });
-    }
-
-    if (segmentFilters.length === 0) {
-      return null;
-    }
-
-    return {
-      logic: "AND",
-      filters: segmentFilters
-    };
-  };
-
-  const parseAppliedFilters = (filters: QueryFilters) => {
-    // Parse applied filters from backend and populate UI state
-    filters.filters.forEach(segmentFilter => {
+  const parseAppliedFilters = (queryFilters: any) => {
+    queryFilters.filters.forEach((segmentFilter: any) => {
       switch (segmentFilter.segment) {
         case "location":
-          const locations = segmentFilter.rules
-            .filter(r => r.op === "EQ")
-            .map(r => r.value as string);
-          setSelectedLocations(locations);
+          filters.setSelectedLocations(segmentFilter.rules.filter((r: any) => r.op === "EQ").map((r: any) => r.value));
           break;
         case "industries":
-          const industries = segmentFilter.rules
-            .filter(r => r.op === "EQ")
-            .map(r => r.value as string);
-          setSelectedIndustries(industries);
+          filters.setSelectedIndustries(segmentFilter.rules.filter((r: any) => r.op === "EQ").map((r: any) => r.value));
           break;
         case "target_markets":
-          const markets = segmentFilter.rules
-            .filter(r => r.op === "EQ")
-            .map(r => r.value as string);
-          setSelectedTargetMarkets(markets);
+          filters.setSelectedTargetMarkets(segmentFilter.rules.filter((r: any) => r.op === "EQ").map((r: any) => r.value));
           break;
         case "funding_stage":
-          const stages = segmentFilter.rules
-            .filter(r => r.op === "EQ")
-            .map(r => r.value as string);
-          setSelectedStages(stages);
+          filters.setSelectedStages(segmentFilter.rules.filter((r: any) => r.op === "EQ").map((r: any) => r.value));
           break;
         case "business_models":
-          const businessModels = segmentFilter.rules
-            .filter(r => r.op === "EQ")
-            .map(r => r.value as string);
-          setSelectedBusinessModels(businessModels);
+          filters.setSelectedBusinessModels(segmentFilter.rules.filter((r: any) => r.op === "EQ").map((r: any) => r.value));
           break;
         case "revenue_models":
-          const revenueModels = segmentFilter.rules
-            .filter(r => r.op === "EQ")
-            .map(r => r.value as string);
-          setSelectedRevenueModels(revenueModels);
+          filters.setSelectedRevenueModels(segmentFilter.rules.filter((r: any) => r.op === "EQ").map((r: any) => r.value));
           break;
         case "employee_count":
-          const empMinRule = segmentFilter.rules.find(r =>
-            r.op.toUpperCase() === "GTE" || r.op.toUpperCase() === "GT"
-          );
-          const empMaxRule = segmentFilter.rules.find(r =>
-            r.op.toUpperCase() === "LTE" || r.op.toUpperCase() === "LT"
-          );
-          if (empMinRule) {
-            setMinEmployees(Number(empMinRule.value));
-          }
-          if (empMaxRule) {
-            setMaxEmployees(Number(empMaxRule.value));
-          }
+          const empMinRule = segmentFilter.rules.find((r: any) => r.op.toUpperCase() === "GTE" || r.op.toUpperCase() === "GT");
+          const empMaxRule = segmentFilter.rules.find((r: any) => r.op.toUpperCase() === "LTE" || r.op.toUpperCase() === "LT");
+          if (empMinRule) filters.setMinEmployees(Number(empMinRule.value));
+          if (empMaxRule) filters.setMaxEmployees(Number(empMaxRule.value));
           break;
         case "funding_amount":
-          const fundMinRule = segmentFilter.rules.find(r =>
-            r.op.toUpperCase() === "GTE" || r.op.toUpperCase() === "GT"
-          );
-          const fundMaxRule = segmentFilter.rules.find(r =>
-            r.op.toUpperCase() === "LTE" || r.op.toUpperCase() === "LT"
-          );
-          if (fundMinRule) {
-            setMinFunding(Number(fundMinRule.value));
-          }
-          if (fundMaxRule) {
-            setMaxFunding(Number(fundMaxRule.value));
-          }
+          const fundMinRule = segmentFilter.rules.find((r: any) => r.op.toUpperCase() === "GTE" || r.op.toUpperCase() === "GT");
+          const fundMaxRule = segmentFilter.rules.find((r: any) => r.op.toUpperCase() === "LTE" || r.op.toUpperCase() === "LT");
+          if (fundMinRule) filters.setMinFunding(Number(fundMinRule.value));
+          if (fundMaxRule) filters.setMaxFunding(Number(fundMaxRule.value));
           break;
       }
     });
   };
 
   const handleSubmit = async () => {
-    // Allow submission with just filters (no query required)
-    if (!inputValue.trim() && !hasActiveFilters) return;
+    if (!inputValue.trim() && !filters.hasActiveFilters) return;
 
     setIsLoading(true);
     setError(null);
+    setHasPerformedSearch(true);
 
     try {
-      // Build filters from current UI state
-      const filters = buildFilters();
-
+      const queryFilters = filters.buildFilters();
       const response = await axios.post(API_ENDPOINTS.SUBMIT_QUERY, {
         query: inputValue,
-        filters: filters,
-        excluded_values: excludedValues
+        filters: queryFilters,
+        excluded_values: filters.excludedValues,
       });
 
       setCompanies(response.data.companies);
 
-      // Update applied filters from backend response
       if (response.data.applied_filters) {
-        setAppliedFilters(response.data.applied_filters);
+        filters.setAppliedFilters(response.data.applied_filters);
         parseAppliedFilters(response.data.applied_filters);
       }
-
-      // Keep the query in the search bar (don't clear it)
     } catch (err) {
       setError("Failed to submit query. Please try again.");
       console.error("Error submitting query:", err);
@@ -369,298 +168,339 @@ function App() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && (inputValue.trim() || hasActiveFilters)) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey && (inputValue.trim() || filters.hasActiveFilters)) {
       e.preventDefault();
       handleSubmit();
     }
   };
 
-  const hasActiveFilters = useMemo(() =>
-    selectedLocations.length > 0 || selectedIndustries.length > 0 || selectedTargetMarkets.length > 0 ||
-    selectedStages.length > 0 || selectedBusinessModels.length > 0 || selectedRevenueModels.length > 0 ||
-    minEmployees !== null || maxEmployees !== null || minFunding !== null || maxFunding !== null,
-    [selectedLocations, selectedIndustries, selectedTargetMarkets, selectedStages, selectedBusinessModels, selectedRevenueModels, minEmployees, maxEmployees, minFunding, maxFunding]
-  );
+  const saveCurrentSearch = useCallback(() => {
+    if (!saveSearchName.trim()) return;
 
-  const clearAllFilters = () => {
-    setSelectedLocations([]);
-    setSelectedIndustries([]);
-    setSelectedTargetMarkets([]);
-    setSelectedStages([]);
-    setSelectedBusinessModels([]);
-    setSelectedRevenueModels([]);
-    setMinEmployees(null);
-    setMaxEmployees(null);
-    setMinFunding(null);
-    setMaxFunding(null);
-    setAppliedFilters(null);
-    setExcludedValues([]);
-  };
+    const newSearch: SavedSearch = {
+      id: Date.now().toString(),
+      name: saveSearchName.trim(),
+      query: inputValue,
+      timestamp: Date.now(),
+      filters: {
+        locations: filters.selectedLocations,
+        industries: filters.selectedIndustries,
+        targetMarkets: filters.selectedTargetMarkets,
+        stages: filters.selectedStages,
+        businessModels: filters.selectedBusinessModels,
+        revenueModels: filters.selectedRevenueModels,
+        minEmployees: filters.minEmployees,
+        maxEmployees: filters.maxEmployees,
+        minFunding: filters.minFunding,
+        maxFunding: filters.maxFunding,
+      },
+    };
 
-  const removeFilterValue = (segment: string, op: string, value: string | number) => {
-    // Add to excluded values list
-    const newExcludedValue: ExcludedFilterValue = { segment, op, value };
-    setExcludedValues([...excludedValues, newExcludedValue]);
+    setSavedSearches([newSearch, ...savedSearches]);
+    setSaveSearchName("");
+    setShowSaveDialog(false);
+  }, [saveSearchName, inputValue, filters, savedSearches]);
 
-    // Remove from applied filters
-    if (appliedFilters) {
-      const updatedFilters = appliedFilters.filters
-        .map(segmentFilter => {
-          if (segmentFilter.segment === segment) {
-            // Remove the specific rule (op, value) from this segment
-            const remainingRules = segmentFilter.rules.filter(
-              rule => !(rule.op === op && String(rule.value) === String(value))
-            );
-            // Only keep segment filter if it has remaining rules
-            if (remainingRules.length > 0) {
-              return { ...segmentFilter, rules: remainingRules };
-            }
-            return null; // Mark for removal
-          }
-          return segmentFilter;
-        })
-        .filter(f => f !== null) as SegmentFilter[];
+  const loadSavedSearch = useCallback((search: SavedSearch) => {
+    isLoadingSavedSearchRef.current = true;
 
-      setAppliedFilters({
-        ...appliedFilters,
-        filters: updatedFilters
-      });
-    }
+    setInputValue(search.query);
+    filters.setSelectedLocations(search.filters.locations);
+    filters.setSelectedIndustries(search.filters.industries);
+    filters.setSelectedTargetMarkets(search.filters.targetMarkets);
+    filters.setSelectedStages(search.filters.stages);
+    filters.setSelectedBusinessModels(search.filters.businessModels);
+    filters.setSelectedRevenueModels(search.filters.revenueModels);
+    filters.setMinEmployees(search.filters.minEmployees);
+    filters.setMaxEmployees(search.filters.maxEmployees);
+    filters.setMinFunding(search.filters.minFunding);
+    filters.setMaxFunding(search.filters.maxFunding);
+    setShowSavedSearches(false);
 
-    // Update UI state for this specific value
-    switch (segment) {
-      case "location":
-        setSelectedLocations(prev => prev.filter(loc => loc !== value));
-        break;
-      case "industries":
-        setSelectedIndustries(prev => prev.filter(ind => ind !== value));
-        break;
-      case "target_markets":
-        setSelectedTargetMarkets(prev => prev.filter(tm => tm !== value));
-        break;
-      case "funding_stage":
-        setSelectedStages(prev => prev.filter(stage => stage !== value));
-        break;
-      case "business_models":
-        setSelectedBusinessModels(prev => prev.filter(bm => bm !== value));
-        break;
-      case "revenue_models":
-        setSelectedRevenueModels(prev => prev.filter(rm => rm !== value));
-        break;
-      case "employee_count":
-        // For numeric ranges, if user removes a bound, clear that bound
-        if (op === "GTE" || op === "GT") {
-          setMinEmployees(null);
-        } else if (op === "LTE" || op === "LT") {
-          setMaxEmployees(null);
-        }
-        break;
-      case "funding_amount":
-        if (op === "GTE" || op === "GT") {
-          setMinFunding(null);
-        } else if (op === "LTE" || op === "LT") {
-          setMaxFunding(null);
-        }
-        break;
-    }
-  };
+    setTimeout(() => {
+      isLoadingSavedSearchRef.current = false;
+    }, 100);
+  }, [filters]);
 
-  const showResults = companies.length > 0 || error;
-  const hasSearched = showResults || isLoading;
+  const deleteSavedSearch = useCallback((id: string) => {
+    setSavedSearches(prev => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const clearEverything = useCallback(() => {
+    setInputValue("");
+    filters.clearAllFilters();
+    setCompanies([]);
+    setError(null);
+    setHasPerformedSearch(false);
+  }, [filters]);
+
+  const hasSearched = hasPerformedSearch || isLoading;
+  const activeFilterCount =
+    filters.selectedLocations.length +
+    filters.selectedIndustries.length +
+    filters.selectedTargetMarkets.length +
+    filters.selectedStages.length +
+    filters.selectedBusinessModels.length +
+    filters.selectedRevenueModels.length +
+    (filters.minEmployees !== null || filters.maxEmployees !== null ? 1 : 0) +
+    (filters.minFunding !== null || filters.maxFunding !== null ? 1 : 0);
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className={`w-full max-w-5xl mx-auto transition-all duration-500 ${hasSearched ? 'pt-8' : 'min-h-screen flex flex-col justify-center'}`}>
-        {/* Search Section */}
-        <div className={`flex flex-col items-center gap-6 px-6 ${hasSearched ? '' : 'mb-20'}`}>
-          {/* Magnifying Glass Icon - Always visible */}
-          <div className={`mb-8 ${isLoading ? 'animate-bounce' : ''}`}>
-            <svg
-              className="w-24 h-24 text-blue-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-          </div>
+    <div className="min-h-screen w-full bg-white">
+      {hasSearched && (
+        <div className="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-md">
+          <div className="w-full max-w-5xl mx-auto px-6 py-5">
+            <div className="flex items-center gap-6">
+              <div className={isLoading ? "animate-spin" : ""}>
+                <svg className="w-9 h-9 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
 
-          {/* Search Bar */}
-          <div className={`relative ${hasSearched ? 'w-full' : 'w-full max-w-3xl'}`}>
-            <textarea
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isLoading}
-              className="w-full h-24 px-6 py-4 pr-24 rounded-3xl border-2 border-gray-200 bg-white text-gray-800 text-lg placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              placeholder={placeholder}
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={(!inputValue.trim() && !hasActiveFilters) || isLoading}
-              className="absolute bottom-4 right-4 px-6 py-2.5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-semibold disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed transition-all hover:shadow-lg hover:scale-105 disabled:hover:scale-100"
-              aria-label="Submit"
-            >
-              {isLoading ? "Searching..." : "Search"}
-            </button>
-          </div>
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isLoading}
+                  className="w-full h-12 px-5 pr-28 rounded-full border-2 border-gray-200 bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                  placeholder={placeholder}
+                />
+                <button
+                  onClick={handleSubmit}
+                  disabled={(!inputValue.trim() && !filters.hasActiveFilters) || isLoading}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-semibold disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed transition-all hover:shadow-lg hover:scale-105 disabled:hover:scale-100"
+                >
+                  {isLoading ? "..." : "Search"}
+                </button>
+              </div>
 
-          {/* Unified Filter Section */}
-          <div className={`${hasSearched ? 'w-full' : 'w-full max-w-3xl'}`}>
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Filters</h3>
-                {hasActiveFilters && (
+              <button
+                onClick={() => setShowSaveDialog(true)}
+                className="px-4 py-2 rounded-full bg-green-100 text-green-700 text-sm font-medium hover:bg-green-200 transition-all hover:shadow-md flex items-center gap-1.5 border border-green-200"
+                title="Save this search"
+              >
+                💾 Save
+              </button>
+
+              <button
+                onClick={() => setShowSavedSearches(!showSavedSearches)}
+                className="px-4 py-2 rounded-full bg-purple-100 text-purple-700 text-sm font-medium hover:bg-purple-200 transition-all hover:shadow-md flex items-center gap-1.5 border border-purple-200"
+                title="View saved searches"
+              >
+                📂 Saved {savedSearches.length > 0 && `(${savedSearches.length})`}
+              </button>
+
+              {(inputValue.trim() || filters.hasActiveFilters) && (
+                <button
+                  onClick={clearEverything}
+                  className="px-4 py-2 rounded-full bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 transition-all hover:shadow-md flex items-center gap-1.5 border border-red-200"
+                  title="Clear everything"
+                >
+                  ✕ Clear all
+                </button>
+              )}
+            </div>
+
+            <div className="mt-4">
+              {!filtersExpanded && (
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    onClick={clearAllFilters}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                    onClick={() => setFiltersExpanded(true)}
+                    className="px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium transition-all flex items-center gap-1.5 border border-gray-200"
                   >
-                    Clear all
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    {filters.hasActiveFilters ? `${activeFilterCount} filters` : "Add filters"}
                   </button>
-                )}
-              </div>
 
-              {/* Text Filters - Grid Layout */}
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <FilterAutocomplete
-                  value={selectedLocations}
-                  onChange={setSelectedLocations}
-                  onDeleteChip={(value) => removeFilterValue("location", "EQ", value)}
-                  options={filterOptions.locations}
-                  label={FILTER_CONFIG.location.label}
-                  emoji={FILTER_CONFIG.location.emoji}
-                  chipColor={FILTER_CONFIG.location.colors}
-                  disabled={isLoading}
-                />
+                  {filters.hasActiveFilters && (
+                    <FilterPills
+                      {...filters}
+                      onRemoveFilter={filters.removeFilterValue}
+                      onClearEmployeeRange={() => {
+                        filters.setMinEmployees(null);
+                        filters.setMaxEmployees(null);
+                      }}
+                      onClearFundingRange={() => {
+                        filters.setMinFunding(null);
+                        filters.setMaxFunding(null);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
 
-                <FilterAutocomplete
-                  value={selectedIndustries}
-                  onChange={setSelectedIndustries}
-                  onDeleteChip={(value) => removeFilterValue("industries", "EQ", value)}
-                  options={filterOptions.industries}
-                  label={FILTER_CONFIG.industries.label}
-                  emoji={FILTER_CONFIG.industries.emoji}
-                  chipColor={FILTER_CONFIG.industries.colors}
-                  disabled={isLoading}
+              {filtersExpanded && (
+                <FilterPanel
+                  filterOptions={filterOptions}
+                  {...filters}
+                  onRemoveFilter={filters.removeFilterValue}
+                  isLoading={isLoading}
+                  onClose={() => setFiltersExpanded(false)}
                 />
-
-                <FilterAutocomplete
-                  value={selectedTargetMarkets}
-                  onChange={setSelectedTargetMarkets}
-                  onDeleteChip={(value) => removeFilterValue("target_markets", "EQ", value)}
-                  options={filterOptions.target_markets}
-                  label={FILTER_CONFIG.targetMarkets.label}
-                  emoji={FILTER_CONFIG.targetMarkets.emoji}
-                  chipColor={FILTER_CONFIG.targetMarkets.colors}
-                  disabled={isLoading}
-                />
-
-                <FilterAutocomplete
-                  value={selectedStages}
-                  onChange={setSelectedStages}
-                  onDeleteChip={(value) => removeFilterValue("funding_stage", "EQ", value)}
-                  options={filterOptions.stages}
-                  label={FILTER_CONFIG.stages.label}
-                  emoji={FILTER_CONFIG.stages.emoji}
-                  chipColor={FILTER_CONFIG.stages.colors}
-                  disabled={isLoading}
-                />
-
-                <FilterAutocomplete
-                  value={selectedBusinessModels}
-                  onChange={setSelectedBusinessModels}
-                  onDeleteChip={(value) => removeFilterValue("business_models", "EQ", value)}
-                  options={filterOptions.business_models}
-                  label={FILTER_CONFIG.businessModels.label}
-                  emoji={FILTER_CONFIG.businessModels.emoji}
-                  chipColor={FILTER_CONFIG.businessModels.colors}
-                  disabled={isLoading}
-                />
-
-                <FilterAutocomplete
-                  value={selectedRevenueModels}
-                  onChange={setSelectedRevenueModels}
-                  onDeleteChip={(value) => removeFilterValue("revenue_models", "EQ", value)}
-                  options={filterOptions.revenue_models}
-                  label={FILTER_CONFIG.revenueModels.label}
-                  emoji={FILTER_CONFIG.revenueModels.emoji}
-                  chipColor={FILTER_CONFIG.revenueModels.colors}
-                  disabled={isLoading}
-                />
-              </div>
-
-              {/* Numeric Filters with Min/Max Inputs */}
-              <div className="space-y-4 pt-4 border-t border-gray-200">
-                <NumericRangeFilter
-                  min={minEmployees}
-                  max={maxEmployees}
-                  onMinChange={setMinEmployees}
-                  onMaxChange={setMaxEmployees}
-                  {...NUMERIC_FILTER_CONFIG.employee}
-                  disabled={isLoading}
-                />
-
-                <NumericRangeFilter
-                  min={minFunding}
-                  max={maxFunding}
-                  onMinChange={setMinFunding}
-                  onMaxChange={setMaxFunding}
-                  {...NUMERIC_FILTER_CONFIG.funding}
-                  disabled={isLoading}
-                />
-              </div>
+              )}
             </div>
           </div>
         </div>
+      )}
 
-        {/* Results Section */}
+      <div className={`w-full max-w-5xl mx-auto transition-all duration-500 ${hasSearched ? "pt-8" : "min-h-screen flex flex-col justify-center"}`}>
+        {!hasSearched && (
+          <div className="flex flex-col items-center gap-6 px-6 mb-20">
+            <div className={`mb-8 ${isLoading ? "animate-bounce" : ""}`}>
+              <svg className="w-24 h-24 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+
+            <div className="relative w-full max-w-3xl">
+              <textarea
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+                className="w-full h-24 px-6 py-4 pr-24 rounded-3xl border-2 border-gray-200 bg-white text-gray-800 text-lg placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                placeholder={placeholder}
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={(!inputValue.trim() && !filters.hasActiveFilters) || isLoading}
+                className="absolute bottom-4 right-4 px-6 py-2.5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-semibold disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed transition-all hover:shadow-lg hover:scale-105 disabled:hover:scale-100"
+              >
+                {isLoading ? "Searching..." : "Search"}
+              </button>
+            </div>
+
+            <div className="w-full max-w-3xl">
+              {!filtersExpanded && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setFiltersExpanded(true)}
+                    className="px-4 py-2 rounded-full bg-white border-2 border-gray-300 hover:border-blue-400 text-gray-700 text-sm font-medium transition-all hover:shadow-md flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    {filters.hasActiveFilters ? `Filters (${activeFilterCount})` : "Add filters"}
+                  </button>
+
+                  {savedSearches.length > 0 && (
+                    <button
+                      onClick={() => setShowSavedSearches(true)}
+                      className="px-4 py-2 rounded-full bg-white border-2 border-purple-300 hover:border-purple-400 text-purple-700 text-sm font-medium transition-all hover:shadow-md flex items-center gap-2"
+                      title="View saved searches"
+                    >
+                      📂 Saved ({savedSearches.length})
+                    </button>
+                  )}
+
+                  {filters.hasActiveFilters && (
+                    <FilterPills
+                      {...filters}
+                      onRemoveFilter={filters.removeFilterValue}
+                      onClearEmployeeRange={() => {
+                        filters.setMinEmployees(null);
+                        filters.setMaxEmployees(null);
+                      }}
+                      onClearFundingRange={() => {
+                        filters.setMinFunding(null);
+                        filters.setMaxFunding(null);
+                      }}
+                      showEmojis
+                    />
+                  )}
+                </div>
+              )}
+
+              {filtersExpanded && (
+                <div className="mt-4">
+                  <FilterPanel
+                    filterOptions={filterOptions}
+                    {...filters}
+                    onRemoveFilter={filters.removeFilterValue}
+                    isLoading={isLoading}
+                    onClose={() => setFiltersExpanded(false)}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {hasSearched && (
           <div className="w-full max-w-5xl mx-auto px-6 mt-8">
-                {isLoading && (
-              <div className="w-full p-8 rounded-3xl bg-white shadow-lg border border-gray-100">
-                <div className="flex items-center gap-4">
-                  <div className="w-6 h-6 border-3 border-gray-200 border-t-blue-600 rounded-full animate-spin"></div>
-                  <div>
-                    <p className="text-gray-800 font-medium">Searching companies...</p>
-                    <p className="text-sm text-gray-500">This may take a moment</p>
+            {isLoading && (
+              <>
+                <div className="mb-8">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-3xl">✨</span>
+                    <h2 className="text-2xl font-bold text-gray-900">Searching...</h2>
                   </div>
+                  <p className="text-gray-600 ml-12">Finding the best matches for your query</p>
                 </div>
-              </div>
+                <CompanyListSkeleton count={3} />
+              </>
             )}
 
-            {/* Error State */}
             {error && (
               <div className="w-full p-6 rounded-3xl bg-red-50 shadow-lg border border-red-100">
                 <p className="text-red-800 font-medium">{error}</p>
               </div>
             )}
 
-            {/* Results */}
+            {companies.length === 0 && !isLoading && !error && (
+              <EmptyState
+                query={inputValue}
+                hasFilters={filters.hasActiveFilters}
+                onClearEverything={clearEverything}
+              />
+            )}
+
             {companies.length > 0 && !isLoading && (
-              <div className="w-full space-y-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">✨</span>
-                  <h2 className="text-xl font-bold text-gray-800">
-                    I've evaluated companies for you. Here are the {companies.length} that matter.
-                  </h2>
+              <div className="w-full">
+                <div className="mb-8">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-3xl">✨</span>
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      Found {companies.length} {companies.length === 1 ? "company" : "companies"}
+                    </h2>
+                  </div>
+                  <p className="text-gray-600 ml-12">Here are the best matches for your search</p>
                 </div>
 
-                {/* Company Results */}
-                {companies.map((company) => (
-                  <CompanyCard key={company.id} company={company} />
-                ))}
+                <div className="space-y-6">
+                  {companies.map((company) => (
+                    <CompanyCard key={company.id} company={company} />
+                  ))}
+                </div>
               </div>
             )}
           </div>
         )}
       </div>
+
+      <SaveSearchDialog
+        show={showSaveDialog}
+        searchName={saveSearchName}
+        onNameChange={setSaveSearchName}
+        onSave={saveCurrentSearch}
+        onClose={() => {
+          setShowSaveDialog(false);
+          setSaveSearchName("");
+        }}
+      />
+
+      <SavedSearchesModal
+        show={showSavedSearches}
+        searches={savedSearches}
+        onClose={() => setShowSavedSearches(false)}
+        onLoad={loadSavedSearch}
+        onDelete={deleteSavedSearch}
+      />
     </div>
   );
 }
