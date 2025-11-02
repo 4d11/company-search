@@ -9,15 +9,11 @@ from backend.es.operations import search_companies_with_filters
 from backend.llm.query_extractor import extract_query_filters
 from backend.llm.query_classifier import get_query_classifier
 from backend.llm.portfolio_analyzer import analyze_portfolio_for_complementary_thesis
-from backend.llm.thesis_expander import expand_conceptual_thesis
 from backend.llm.query_rewriter import rewrite_query_for_search
 from backend.llm.explanation_generator import batch_generate_explanations
 from backend.logic.filter_merger import merge_filters
 from backend.logic.explainer import explain_result
 from backend.models.filters import QueryFilters, ExcludedFilterValue
-
-# Feature flag: Set to False to disable thesis expansion for evaluation
-ENABLE_THESIS_EXPANSION = False
 
 
 def search_companies(
@@ -85,22 +81,6 @@ def search_companies_with_extraction(
                     "gaps": portfolio_analysis.gaps,
                     "complementary_areas": portfolio_analysis.complementary_areas,
                     "strategic_reasoning": portfolio_analysis.strategic_reasoning,
-                }
-
-        elif ENABLE_THESIS_EXPANSION and classification.classification == "explicit_search" and classification.is_conceptual:
-            thesis_expansion = expand_conceptual_thesis(query_text)
-            if thesis_expansion:
-                search_query = thesis_expansion.expanded_query
-                thesis_context = {
-                    "type": "conceptual",
-                    "summary": thesis_expansion.thesis_summary,
-                    "core_concepts": {
-                        "technology": thesis_expansion.core_concepts.technology,
-                        "business_model": thesis_expansion.core_concepts.business_model,
-                        "industries": thesis_expansion.core_concepts.industries,
-                        "use_case": thesis_expansion.core_concepts.use_case,
-                    },
-                    "strategic_focus": thesis_expansion.strategic_focus,
                 }
 
     if search_query and search_query.strip():
