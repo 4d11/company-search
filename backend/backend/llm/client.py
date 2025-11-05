@@ -2,7 +2,7 @@
 LLM client using OpenAI SDK.
 """
 import json
-from typing import Any, Dict, Type, TypeVar
+from typing import Any, Dict, Type, TypeVar, Optional
 from openai import OpenAI
 
 from pydantic import BaseModel, ValidationError
@@ -13,7 +13,6 @@ from backend.settings import settings
 logger = get_logger(__name__)
 
 T = TypeVar('T', bound=BaseModel)
-
 
 
 class LLMClient:
@@ -72,6 +71,46 @@ class LLMClient:
         except ValidationError as e:
             logger.error(f"Pydantic validation error: {e}")
             raise
+
+    def do_web_search(self, prompt: str, query: str) -> Optional[str]:
+        """
+        Perform a web search using the LLM client.
+
+        Note: Your LLM provider needs to support it!
+
+        Args:
+            prompt: System message with instructions for the search
+            query: User query to search for
+
+        Returns:
+            Text response from the LLM containing search results
+        """
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": query}
+        ]
+        supported_models = ['gemini']
+
+        if any([m in self.model for m in supported_models]):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    extra_body={
+                        "tools": [{
+                            "type": "google_search_retrieval",
+                            "google_search_retrieval": {}
+                        }]
+                    }
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                logger.error("Error fetching from api")
+                return None
+        else:
+            raise ValueError("Your LLM provider does not support search!")
+
+
 
     def generate_raw(
         self,

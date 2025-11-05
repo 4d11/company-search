@@ -3,7 +3,8 @@ from fastapi.concurrency import asynccontextmanager
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.db import database
-from backend.routes import admin, query
+from backend.logging_config import setup_logging
+from backend.routes import admin, query, research
 from backend.settings import settings
 
 
@@ -21,6 +22,7 @@ async def lifespan(app: FastAPI):
     # Clean up...
 
 
+setup_logging()
 app = FastAPI(lifespan=lifespan)
 
 
@@ -37,3 +39,4 @@ app.add_middleware(
 # API routes
 app.include_router(query.router, prefix="/api", tags=["query"])
 app.include_router(admin.router)
+app.include_router(research.router, prefix="/api", tags=["research"])
